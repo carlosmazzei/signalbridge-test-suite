@@ -1,0 +1,2 @@
+cobs==1.2.0
+pyserial==3.5
