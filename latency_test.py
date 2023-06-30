@@ -58,7 +58,8 @@ def publish(ser, iteration_counter):
 if __name__ == "__main__":
 
     # Open and configure serial port
-    ser = open_serial("/dev/ttyUSB0", 115200, 0.1)
+    print("Opening serial port (/dev/cu.SLAB_USBtoUART)...")
+    ser = open_serial("/dev/tty.SLAB_USBtoUART", 115200, 0.1)
     if ser == None:
         print("Exiting...")
         exit(1)
