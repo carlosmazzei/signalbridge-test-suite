@@ -1,10 +1,12 @@
 import serial
 import time
 import threading
+import json
 from cobs import cobs
 
 latency_results = []
 latency_message = []
+stop_event = threading.Event()
 
 # Open a serial connection
 def open_serial(port, baudrate, timeout):
@@ -30,7 +32,7 @@ def open_serial(port, baudrate, timeout):
 def read_data(ser):
     byte_string = b''
     print("Starting read thread...")
-    while True:
+    while not stop_event.is_set():
         byte = ser.read(1)
         if len(byte) != 0:
             if byte == b'\x00':
@@ -80,20 +82,56 @@ if __name__ == "__main__":
 
     latency_message = [0] * 255
 
-    print("Waiting to start test for 10 seconds...")
-    time.sleep(10)
+    print("Waiting to start test for 5 seconds...")
+    time.sleep(5)
 
     # Send byte messages
-    for i in range(0, 255):
-        publish(ser, i)
-        time.sleep(1)
+    num_times = 10
+    min_wait = 0
+    max_wait = 0.5
+    output_filename = "output.json"
+
+    # Open the file in append mode
+    output_file = open(output_filename, "w")    
+
+    # Loop for each byte
+    for j in range(num_times):
+        waiting_time = min_wait + (max_wait - min_wait) * (j / (num_times - 1))
+        print(f"Test {j}, waiting time: {waiting_time} s")
+        
+        # Prepare the data to store in JSON format
+        output_data = []
+
+        for i in range(0, 255):
+            publish(ser, i)
+            time.sleep(waiting_time)
     
-    # Sleep for 20 seconds
-    print("Waiting for 20 seconds to collect results...")
-    time.sleep(20)
+        # Sleep for 10 seconds
+        print("Waiting for 10 seconds to collect results...")
+        time.sleep(10)
+
+        # Write the data to the output file
+        output_data.append({"test": j, "waiting_time": waiting_time, "results": latency_results})
+        json.dump(output_data, output_file)
+        output_file.write(",")
+        output_file.flush()
+
+        # Calculate the average latency
+        latency_avg = sum(latency_results) / len(latency_results)
+        print(f"Average latency: {latency_avg * 1e3} ms")
+        # Calculate minimum latency
+        latency_min = min(latency_results)
+        print(f"Minimum latency: {latency_min * 1e3} ms")
+        # Calculate maximum latency
+        latency_max = max(latency_results)
+        print(f"Maximum latency: {latency_max * 1e3} ms") 
     
+    # Close output file
+    output_file.close()
+
     # Wait for the read thread to finish
     print("Stopping read thread and closing serial port...")
+    stop_event.set()
     read_thread.join()
     ser.close()
     print("Test ended")
