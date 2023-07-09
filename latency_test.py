@@ -65,6 +65,54 @@ def publish(ser, iteration_counter):
     ser.write(message)
     print(f"Published (encoded) `{message}`, counter {counter}")
 
+# Main test
+def main_test(ser, num_times=10, max_wait=0.5, min_wait=0, samples=255):
+
+    # Output filename
+    output_filename = "output.json"
+
+    # Open the file in append mode
+    output_file = open(output_filename, "w")    
+    
+    # Prepare the data to store in JSON format
+    output_data = []
+    latency_results_copy = [[] for i in range(num_times)]
+
+    # Loop for each byte
+    for j in range(num_times):
+        latency_results.clear()
+        
+        # Calculate the waiting time
+        waiting_time = min_wait + (max_wait - min_wait) * (j / (num_times - 1))
+        print(f"Test {j}, waiting time: {waiting_time} s")
+        
+        for i in range(0, samples):
+            publish(ser, i)
+            time.sleep(waiting_time)
+    
+        # Sleep for 10 seconds
+        print("Waiting for 5 seconds to collect results...")
+        time.sleep(5)
+
+        # Calculate the average latency
+        latency_avg = sum(latency_results) / len(latency_results)
+        print(f"Average latency: {latency_avg * 1e3} ms")
+        # Calculate minimum latency
+        latency_min = min(latency_results)
+        print(f"Minimum latency: {latency_min * 1e3} ms")
+        # Calculate maximum latency
+        latency_max = max(latency_results)
+        print(f"Maximum latency: {latency_max * 1e3} ms") 
+        latency_results_copy[j] = latency_results.copy()
+
+        # Write the data to the output file
+        output_data.append({"test": j, "sample": samples, "waiting_time": waiting_time, "results": latency_results_copy[j], "latency_avg": latency_avg, "latency_min": latency_min, "latency_max": latency_max})
+    
+    # Close output file
+    json.dump(output_data, output_file, indent=4)
+    output_file.flush()
+    output_file.close()
+
 # Main program
 if __name__ == "__main__":
 
@@ -85,49 +133,8 @@ if __name__ == "__main__":
     print("Waiting to start test for 5 seconds...")
     time.sleep(5)
 
-    # Send byte messages
-    num_times = 10
-    min_wait = 0
-    max_wait = 0.5
-    output_filename = "output.json"
-
-    # Open the file in append mode
-    output_file = open(output_filename, "w")    
-
-    # Loop for each byte
-    for j in range(num_times):
-        waiting_time = min_wait + (max_wait - min_wait) * (j / (num_times - 1))
-        print(f"Test {j}, waiting time: {waiting_time} s")
-        
-        # Prepare the data to store in JSON format
-        output_data = []
-
-        for i in range(0, 255):
-            publish(ser, i)
-            time.sleep(waiting_time)
-    
-        # Sleep for 10 seconds
-        print("Waiting for 10 seconds to collect results...")
-        time.sleep(10)
-
-        # Write the data to the output file
-        output_data.append({"test": j, "waiting_time": waiting_time, "results": latency_results})
-        json.dump(output_data, output_file)
-        output_file.write(",")
-        output_file.flush()
-
-        # Calculate the average latency
-        latency_avg = sum(latency_results) / len(latency_results)
-        print(f"Average latency: {latency_avg * 1e3} ms")
-        # Calculate minimum latency
-        latency_min = min(latency_results)
-        print(f"Minimum latency: {latency_min * 1e3} ms")
-        # Calculate maximum latency
-        latency_max = max(latency_results)
-        print(f"Maximum latency: {latency_max * 1e3} ms") 
-    
-    # Close output file
-    output_file.close()
+    # Run the test
+    main_test(ser, num_times=5, max_wait=0.5, min_wait=0, samples=255)
 
     # Wait for the read thread to finish
     print("Stopping read thread and closing serial port...")
