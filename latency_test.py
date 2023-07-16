@@ -1,8 +1,10 @@
 import serial
 import time
+import datetime
 import threading
 import json
 from cobs import cobs
+import random
 
 latency_results = []
 latency_message = []
@@ -66,10 +68,15 @@ def publish(ser, iteration_counter):
     print(f"Published (encoded) `{message}`, counter {counter}")
 
 # Main test
-def main_test(ser, num_times=10, max_wait=0.5, min_wait=0, samples=255):
+def main_test(ser, num_times=10, max_wait=0.5, min_wait=0, samples=255, jitter=False):
 
+    # Get the current date and time
+    current_datetime = datetime.datetime.now()
+    # Format the date and time as a string
+    formatted_datetime = current_datetime.strftime("%Y%m%d_%H%M%S")
     # Output filename
-    output_filename = "output.json"
+    filename = "output.json"
+    output_filename = f"./tests/{formatted_datetime}_{filename}"
 
     # Open the file in append mode
     output_file = open(output_filename, "w")    
@@ -85,10 +92,15 @@ def main_test(ser, num_times=10, max_wait=0.5, min_wait=0, samples=255):
         # Calculate the waiting time
         waiting_time = min_wait + (max_wait - min_wait) * (j / (num_times - 1))
         print(f"Test {j}, waiting time: {waiting_time} s")
+        random_max = (max_wait - min_wait) * 0.2
         
         for i in range(0, samples):
             publish(ser, i)
-            time.sleep(waiting_time)
+            if jitter == True:
+                # Sleep for a random amount of time
+                time.sleep(waiting_time + random.uniform(0, random_max))
+            else:
+                time.sleep(waiting_time)
     
         # Sleep for 10 seconds
         print("Waiting for 5 seconds to collect results...")
@@ -134,7 +146,10 @@ if __name__ == "__main__":
     time.sleep(5)
 
     # Run the test
-    main_test(ser, num_times=5, max_wait=0.5, min_wait=0, samples=255)
+    main_test(ser, num_times=10, max_wait=0.7, min_wait=0, samples=255)
+
+    # Run again with jitter
+    main_test(ser, num_times=10, max_wait=0.7, min_wait=0, samples=255, jitter=True)
 
     # Wait for the read thread to finish
     print("Stopping read thread and closing serial port...")

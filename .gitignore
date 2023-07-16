@@ -1,6 +1,9 @@
 # VS COde
 .vscode
 
+# Remove test results folder
+/tests
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
