@@ -129,7 +129,8 @@ def main_test(ser, num_times=10, max_wait=0.5, min_wait=0, samples=255, jitter=F
 if __name__ == "__main__":
 
     # Open and configure serial port
-    port = "/dev/cu.SLAB_USBtoUART"
+    # port = "/dev/cu.SLAB_USBtoUART"
+    port = "/dev/cu.usbmodem1234561"
     print(f"Opening serial port: {port}...")
     ser = open_serial(port, 115200, 0.1)
     if ser == None:
