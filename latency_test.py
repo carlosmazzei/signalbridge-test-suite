@@ -51,7 +51,7 @@ def read_data(ser):
                     return
             else:
                 byte_string += byte
-                print(f"Received byte string: {byte_string}")
+                #print(f"Received byte string: {byte_string}")
 
 # Send 10 byte message to MQTT broker and wait for response. Log the time taken.
 def publish(ser, iteration_counter):  
@@ -102,10 +102,6 @@ def main_test(ser, num_times=10, max_wait=0.5, min_wait=0, samples=255, jitter=F
             else:
                 time.sleep(waiting_time)
     
-        # Sleep for 10 seconds
-        print("Waiting for 5 seconds to collect results...")
-        time.sleep(5)
-
         # Calculate the average latency
         latency_avg = sum(latency_results) / len(latency_results)
         print(f"Average latency: {latency_avg * 1e3} ms")
@@ -116,9 +112,13 @@ def main_test(ser, num_times=10, max_wait=0.5, min_wait=0, samples=255, jitter=F
         latency_max = max(latency_results)
         print(f"Maximum latency: {latency_max * 1e3} ms") 
         latency_results_copy[j] = latency_results.copy()
-
+        
         # Write the data to the output file
         output_data.append({"test": j, "sample": samples, "waiting_time": waiting_time, "results": latency_results_copy[j], "latency_avg": latency_avg, "latency_min": latency_min, "latency_max": latency_max})
+        
+        # Sleep for 10 seconds
+        print("Waiting for 5 seconds to collect results...")
+        time.sleep(5)
     
     # Close output file
     json.dump(output_data, output_file, indent=4)
