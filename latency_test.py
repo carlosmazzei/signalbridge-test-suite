@@ -192,8 +192,8 @@ def send_command(ser):
 def print_decoded_message(message):
     
     # Print each byte of the message
-    for i in range(len(message)):
-        print(f"{i}: {message[i]}")
+    # for i in range(len(message)):
+    #     print(f"{i}: {message[i]}")
 
     rxid = message[0]
     rxid <<= 3
