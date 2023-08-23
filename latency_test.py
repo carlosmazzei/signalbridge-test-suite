@@ -45,8 +45,6 @@ def read_data(ser):
             if byte == b"\x00":
                 # Decode the byte string using COBS
                 decoded_data = cobs.decode(byte_string)
-                # Reset the byte string
-                byte_string = b""
                 if latency_test_mode == True:
                     try:
                         counter = decoded_data[5]
@@ -58,7 +56,11 @@ def read_data(ser):
                         return
                 else:
                     print()
-                    print(f"Received `{decoded_data}`")
+                    print(f"Received raw: {byte_string}, decoded: {decoded_data}")
+                    print_decoded_message(decoded_data)
+                # Reset the byte string
+                byte_string = b""
+
             else:
                 byte_string += byte
 
@@ -185,6 +187,26 @@ def send_command(ser):
         message += b"\x00"
         ser.write(message)
         print(f"Published (encoded) `{message}`")
+
+
+def print_decoded_message(message):
+    
+    # Print each byte of the message
+    for i in range(len(message)):
+        print(f"{i}: {message[i]}")
+
+    rxid = message[0]
+    rxid <<= 3
+    rxid |= (message[1] & 0xE0) >> 5
+    command = message[1] & 0x1F
+    length = message[2]
+    print(f"Id: {rxid}, Command: {command}")
+
+    if command == 4:
+        state = message[3] & 0x01
+        col = (message[3] >> 4) & 0x0F
+        row = (message[3] >> 1) & 0x0F
+        print(f"Column: {col}, Row: {row}, State: {state}, Length: {length}")
 
 
 # Main program
