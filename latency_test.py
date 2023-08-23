@@ -207,6 +207,10 @@ def print_decoded_message(message):
         col = (message[3] >> 4) & 0x0F
         row = (message[3] >> 1) & 0x0F
         print(f"Column: {col}, Row: {row}, State: {state}, Length: {length}")
+    elif command == 3:
+        channel = (message[3] & 0xF0) >> 4
+        value = (message[3] & 0x0F) + message[4]
+        print(f"Channel: {channel}, Value: {value}")
 
 
 # Main program
