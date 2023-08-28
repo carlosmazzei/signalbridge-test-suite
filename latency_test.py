@@ -211,7 +211,8 @@ def print_decoded_message(message):
         print(f"Column: {col}, Row: {row}, State: {state}, Length: {length}")
     elif command == 3:
         channel = message[3]
-        value = message[4] + message[5]
+        value = message[4] << 8
+        value |= message[5]
         print(f"Channel: {channel}, Value: {value}")
 
 
