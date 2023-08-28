@@ -192,9 +192,11 @@ def send_command(ser):
 def print_decoded_message(message):
     
     # Print each byte of the message
-    # for i in range(len(message)):
-    #     print(f"{i}: {message[i]}")
-
+    logout = ""
+    for i in range(len(message)):
+        logout += f"{i}: {message[i]} "
+        
+    print(f"Decoded message: {logout}")
     rxid = message[0]
     rxid <<= 3
     rxid |= (message[1] & 0xE0) >> 5
@@ -208,8 +210,8 @@ def print_decoded_message(message):
         row = (message[3] >> 1) & 0x0F
         print(f"Column: {col}, Row: {row}, State: {state}, Length: {length}")
     elif command == 3:
-        channel = (message[3] & 0xF0) >> 4
-        value = (message[3] & 0x0F) + message[4]
+        channel = message[3]
+        value = message[4] + message[5]
         print(f"Channel: {channel}, Value: {value}")
 
 
