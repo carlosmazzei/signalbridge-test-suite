@@ -45,7 +45,8 @@ def read_data(ser):
             if byte == b"\x00":
                 # Decode the byte string using COBS
                 decoded_data = cobs.decode(byte_string)
-                if latency_test_mode == True:
+                command = decoded_data[1] & 0x1F
+                if latency_test_mode == True and command == 20:
                     try:
                         counter = decoded_data[5]
                         latency = time.time() - latency_message[counter]
@@ -190,12 +191,11 @@ def send_command(ser):
 
 
 def print_decoded_message(message):
-    
     # Print each byte of the message
     logout = ""
     for i in range(len(message)):
         logout += f"{i}: {message[i]} "
-        
+
     print(f"Decoded message: {logout}")
     rxid = message[0]
     rxid <<= 3
