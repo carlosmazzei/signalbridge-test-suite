@@ -235,6 +235,7 @@ if __name__ == "__main__":
     latency_test_mode = False
     print()
 
+    # Start the main program loop
     while True:
         print("1. Run test")
         print("2. Send commands")
