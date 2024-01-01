@@ -1,2 +1,3 @@
 cobs==1.2.0
 pyserial==3.5
+alive-progress==3.1.5

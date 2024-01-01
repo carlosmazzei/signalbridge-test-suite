@@ -30,8 +30,10 @@ def open_serial(port, baudrate, timeout):
 
     except Exception as e:
         # Print the exception
+        print()
         print(f"Exception: {str(e)}")
         print("Error opening and configuring serial port")
+        print()
         return None
 
 
@@ -39,32 +41,43 @@ def open_serial(port, baudrate, timeout):
 def read_data(ser):
     byte_string = b""
     print("Starting read thread...")
-    while not stop_event.is_set():
-        byte = ser.read(1)
-        if len(byte) != 0:
-            if byte == b"\x00":
-                # Decode the byte string using COBS
-                decoded_data = cobs.decode(byte_string)
-                command = decoded_data[1] & 0x1F
-                if latency_test_mode == True and command == 20:
-                    try:
-                        counter = decoded_data[5]
-                        latency = time.time() - latency_message[counter]
-                        latency_results.append(latency)
-                        print(f"Message {counter} latency: {latency * 1e3} ms")
-                    except IndexError:
-                        print("Invalid message (Index Error)")
-                        return
+
+    try:
+        while not stop_event.is_set():
+            byte = ser.read(1)
+            if len(byte) != 0:
+                if byte == b"\x00":
+                    # Decode the byte string using COBS
+                    decoded_data = cobs.decode(byte_string)
+                    command = decoded_data[1] & 0x1F
+                    if latency_test_mode == True and command == 20:
+                        try:
+                            counter = decoded_data[5]
+                            latency = time.time() - latency_message[counter]
+                            latency_results.append(latency)
+                            print(f"Message {counter} latency: {latency * 1e3} ms")
+                        except IndexError:
+                            print("Invalid message (Index Error)")
+                            return
+                    else:
+                        # Filter ADC commands
+                        if command != 3:
+                            print()
+                            print(f"Received raw: {byte_string}, decoded: {decoded_data}")
+                            print_decoded_message(decoded_data)
+                    # Reset the byte string
+                    byte_string = b""
+
                 else:
-                    print()
-                    print(f"Received raw: {byte_string}, decoded: {decoded_data}")
-                    print_decoded_message(decoded_data)
-                # Reset the byte string
-                byte_string = b""
-
-            else:
-                byte_string += byte
-
+                    byte_string += byte
+    
+    except Exception as e:
+        # Print the exception
+        print(f"Exception: {str(e)}")
+        print("Error reading serial port")
+        stop_event.set()
+        ser.close()
+        exit(1)
 
 # Send 10 byte message to MQTT broker and wait for response. Log the time taken.
 def publish(ser, iteration_counter):
@@ -216,6 +229,13 @@ def print_decoded_message(message):
         print(f"Channel: {channel}, Value: {value}")
 
 
+def exit_program(ser, read_thread):
+    stop_event.set()
+    read_thread.join()
+    ser.close()
+    exit(1)
+
+
 # Main program
 if __name__ == "__main__":
     # Open and configure serial port
@@ -255,10 +275,7 @@ if __name__ == "__main__":
             print("Exiting...")
             # Wait for the read thread to finish
             print("Stopping read thread and closing serial port...")
-            stop_event.set()
-            read_thread.join()
-            ser.close()
-            exit(1)
+            exit_program(ser, read_thread)
         else:
             print("Invalid choice")
             print()
