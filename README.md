@@ -13,67 +13,67 @@ To install dependencies and create a virtual environment in Python, you can use 
 
 1. **Install Python:**
 
-Make sure Python is installed on your system. You can download the latest version from the official Python website: [https://www.python.org/downloads/](https://www.python.org/downloads/)
+   Make sure Python is installed on your system. You can download the latest version from the official Python website: [https://www.python.org/downloads/](https://www.python.org/downloads/)
 
 2. **Install `virtualenv` (if not installed):**
 
-Open a terminal or command prompt and run the following command to install `virtualenv` globally:
+   Open a terminal or command prompt and run the following command to install `virtualenv` globally:
 
-```sh
-pip install virtualenv
-```
+   ```sh
+   pip install virtualenv
+   ```
 
 3. **Create a Virtual Environment:**
 
-Choose or create a directory where you want to store your project and navigate to it using the terminal or command prompt. Then, run the following command to create a virtual environment:
+   Choose or create a directory where you want to store your project and navigate to it using the terminal or command prompt. Then, run the following command to create a virtual environment:
 
-```sh
-virtualenv venv
-```
+   ```sh
+   virtualenv venv
+   ```
 
-Replace `venv` with the desired name for your virtual environment.
+   Replace `venv` with the desired name for your virtual environment.
 
 4. **Activate the Virtual Environment:**
 
-Activate the virtual environment using the appropriate command based on your operating system:
+   Activate the virtual environment using the appropriate command based on your operating system:
 
-- On Windows:
+   - On Windows:
 
-```sh
-venv\Scripts\activate
-```
+   ```sh
+   venv\Scripts\activate
+   ```
 
-- On macOS and Linux:
+   - On macOS and Linux:
 
-```sh
-source venv/bin/activate
-```
+   ```sh
+   source venv/bin/activate
+   ```
 
-Once activated, you should see the virtual environment's name in your command prompt or terminal, indicating that you are now working within the virtual environment.
+   Once activated, you should see the virtual environment's name in your command prompt or terminal, indicating that you are now working within the virtual environment.
 
 5. **Install Dependencies:**
 
-With the virtual environment activated, you can use `pip` to install the required dependencies for your project. For example:
+   With the virtual environment activated, you can use `pip` to install the required dependencies for your project. For example:
 
-```sh
-pip install package_name
-```
+   ```sh
+   pip install package_name
+   ```
 
-Replace `package_name` with the actual name of the package you want to install. You can also install dependencies from a `requirements.txt` file using:
+   Replace `package_name` with the actual name of the package you want to install. You can also install dependencies from a `requirements.txt` file using:
 
-```sh
-pip install -r requirements.txt
-```
+   ```sh
+   pip install -r requirements.txt
+   ```
 
 6. **Deactivate the Virtual Environment:**
 
-When you're done working in the virtual environment, you can deactivate it using the following command:
+   When you're done working in the virtual environment, you can deactivate it using the following command:
 
-```sh
-deactivate
-```
+   ```sh
+   deactivate
+   ```
 
-By following these steps, you can create and activate a virtual environment, install dependencies, and manage your project's dependencies in an isolated environment. This helps in avoiding conflicts between different projects and ensures that your project uses the specified versions of libraries. 
+   By following these steps, you can create and activate a virtual environment, install dependencies, and manage your project's dependencies in an isolated environment. This helps in avoiding conflicts between different projects and ensures that your project uses the specified versions of libraries.
 
 ## Test Application
 
@@ -135,7 +135,7 @@ def main_test(ser, num_times=10, max_wait=0.5, min_wait=0, samples=255, jitter=F
 
 This menu option is used to send desired commands to the interface in order to test other functions
 
-For example sending the heap status command to get 
+For example sending the heap status command to get:  
 
 | Byte 0 | Byte 1 | Byte 2 | Byte 3 | Byte 4 | Byte 5 | Byte 6 | Byte 7 | Byte 8 | Byte 9 |
 |--------|--------|--------|--------|--------|--------|--------|--------|--------|--------|
