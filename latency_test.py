@@ -109,7 +109,7 @@ def main_test(ser, num_times=10, max_wait=0.5, min_wait=0, samples=255, jitter=F
 
     # Prepare the data to store in JSON format
     output_data = []
-    latency_results_copy = [[] for i in range(num_times)]
+    latency_results_copy = [[] for _ in range(num_times)]
     bar_title = f"Test / Jitter: {jitter}"
 
     # Loop for each byte
@@ -189,7 +189,7 @@ def send_command(ser):
         print()
         hex_data = input("Enter hex data (x to exit): ")
         if hex_data == "x":
-            print("Exiting...")
+            print("Exiting send command menu...")
             break
 
         if len(hex_data) % 2 != 0:
@@ -244,7 +244,7 @@ if __name__ == "__main__":
     print(f"Opening serial port: {port}...")
     ser = open_serial(port, 115200, 0.1)
     if ser == None:
-        print("Exiting...")
+        print("Exiting. Cannot open serial port...")
         exit(1)
 
     # Start the read task in a separate thread
