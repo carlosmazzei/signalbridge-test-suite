@@ -1,15 +1,22 @@
 import serial
 import time
+import sys
 import datetime
 import threading
-import latency_test
 import regression_tests
+
+from latency_test import LatencyTest
+from logger import Logger
+
 import json
+import curses
 from cobs import cobs
 from globals import current_mode
 import random
 
 stop_event = threading.Event()
+MAX_LOG_MESSAGES = 20
+logger = None
 
 
 # Open a serial connection
@@ -25,22 +32,20 @@ def open_serial(port, baudrate, timeout):
             xonxoff=False,
             rtscts=False,
         )
-        print(f"Serial port opened: {ser}")
+        logger.display_log(f"Serial port opened: {ser}")
         return ser
 
     except Exception as e:
         # Print the exception
-        print()
-        print(f"Exception: {str(e)}")
-        print("Error opening and configuring serial port")
-        print()
+        logger.display_log("Error opening and configuring serial port")
+        logger.display_log(f"Exception: {e}")
         return None
 
 
 # Read thread
 def read_data(ser):
     byte_string = b""
-    print("Starting read thread...")
+    logger.display_log("Starting read thread...")
 
     try:
         while not stop_event.is_set():
@@ -60,8 +65,8 @@ def read_data(ser):
 
     except Exception as e:
         # Print the exception
-        print(f"Exception: {str(e)}")
-        print("Error reading serial port")
+        logger.display_log(f"Exception: {str(e)}")
+        logger.display_log("Error reading serial port")
         stop_event.set()
         ser.close()
         exit(1)
@@ -76,39 +81,35 @@ def handle_message(command, decoded_data, byte_string):
     elif current_mode == "command":
         # Filter non-ADC commands
         if command != 3:
-            print()
-            print(f"Received raw: {byte_string}, decoded: {decoded_data}")
+            logger.display_log(f"Received raw: {byte_string}, decoded: {decoded_data}")
             print_decoded_message(decoded_data)
-    
-    elif current_mode == "regression":
-        regression_tests.handle_message(command, decoded_data, byte_string)
 
-    #else:
-    #    print()
-    #    print("No mode selected...")
+    elif current_mode == "regression":
+        regression_tests.handle_message(logger, command, decoded_data, byte_string)
+
+    # else:
+    #    display_log()
+    #    display_log("No mode selected...")
 
 
 # Function to send commands
 def send_command(ser):
-    global latency_test_mode
-    latency_test_mode = False
 
     while True:
-        print()
         hex_data = input("Enter hex data (x to exit): ")
         if hex_data == "x":
-            print("Exiting send command menu...")
+            logger.display_log("Exiting send command menu...")
             break
 
         if len(hex_data) % 2 != 0:
-            print("Invalid hex data")
+            logger.display_log("Invalid hex data")
             continue
 
         payload = bytes.fromhex(hex_data)
         message = cobs.encode(payload)
         message += b"\x00"
         ser.write(message)
-        print(f"Published (encoded) `{message}`")
+        logger.display_log(f"Published (encoded) `{message}`")
 
 
 def print_decoded_message(message):
@@ -117,77 +118,107 @@ def print_decoded_message(message):
     for i in range(len(message)):
         logout += f"{i}: {message[i]} "
 
-    print(f"Decoded message: {logout}")
+    logger.display_log(f"Decoded message: {logout}")
     rxid = message[0]
     rxid <<= 3
     rxid |= (message[1] & 0xE0) >> 5
     command = message[1] & 0x1F
     length = message[2]
-    print(f"Id: {rxid}, Command: {command}")
+    logger.display_log(f"Id: {rxid}, Command: {command}")
 
     if command == 4:
         state = message[3] & 0x01
         col = (message[3] >> 4) & 0x0F
         row = (message[3] >> 1) & 0x0F
-        print(f"Column: {col}, Row: {row}, State: {state}, Length: {length}")
+        logger.display_log(
+            f"Column: {col}, Row: {row}, State: {state}, Length: {length}"
+        )
     elif command == 3:
         channel = message[3]
         value = message[4] << 8
         value |= message[5]
-        print(f"Channel: {channel}, Value: {value}")
+        logger.display_log(f"Channel: {channel}, Value: {value}")
 
 
 def exit_program(ser, read_thread):
     stop_event.set()
     read_thread.join()
     ser.close()
-    exit(1)
+
+
+def display_menu(menu_window):
+    menu_window.clear()
+    menu_window.addstr(0, 0, "1. Run latency test\n")
+    menu_window.addstr(1, 0, "2. Send command\n")
+    menu_window.addstr(2, 0, "3. Regression test\n")
+    menu_window.addstr(3, 0, "4. Exit\n")
+    menu_window.addstr(4, 0, "Enter a choice:\n")
+    menu_window.refresh()
+
+
+def main(stdscr):
+    curses.curs_set(0)
+    stdscr.clear()
+
+    log_height = MAX_LOG_MESSAGES + 5
+    log_window = curses.newwin(log_height, curses.COLS, 0, 0)
+    menu_window = curses.newwin(curses.LINES - log_height, curses.COLS, log_height, 0)
+
+    # Redirect sys.stdout to the new window
+    sys.stdout = log_window
+
+    stdscr.refresh()
+
+    global logger
+    logger = Logger(log_window, MAX_LOG_MESSAGES)
+
+    # Open and configure serial port
+    # port = "/dev/cu.SLAB_USBtoUART"
+    port = "/dev/cu.usbmodem1234561"
+    logger.display_log(f"Opening serial port: {port}...")
+    ser = open_serial(port, 115200, 0.1)
+    if ser == None:
+        logger.display_log("Cannot open serial port...")
+    else:
+        # Start the read task in a separate thread
+        read_thread = threading.Thread(target=read_data, args=(ser,))
+        read_thread.start()
+
+    latency_test = LatencyTest(ser, logger)
+
+    try:
+        while True:
+            # display_log(log_window, "This is a log message.")
+            display_menu(menu_window)
+
+            key = stdscr.getch()
+            if key == ord("1"):
+                logger.display_log("Running test...")
+                current_mode = "latency"     
+                latency_test.execute_test()
+
+            elif key == ord("2"):
+                current_mode = "command"
+                send_command(ser)
+
+            elif key == ord("3"):
+                current_mode = "regression"
+                regression_tests.execute_test(ser)
+
+            elif key == ord("4"):
+                logger.display_log("Exiting...")
+                # Wait for the read thread to finish
+                logger.display_log("Stopping read thread and closing serial port...")
+                exit_program(ser, read_thread)
+                break
+            else:
+                logger.display_log("Invalid choice\n")
+
+    except Exception as e:
+        # curses.endwin()
+        logger.display_log(f"Exception in main loop: {e}")
 
 
 # Main program
 if __name__ == "__main__":
-    # Open and configure serial port
-    # port = "/dev/cu.SLAB_USBtoUART"
-    port = "/dev/cu.usbmodem1234561"
-    print(f"Opening serial port: {port}...")
-    ser = open_serial(port, 115200, 0.1)
-    if ser == None:
-        print("Exiting. Cannot open serial port...")
-        exit(1)
-
-    # Start the read task in a separate thread
-    read_thread = threading.Thread(target=read_data, args=(ser,))
-    read_thread.start()
-
-    print()
-
-    # Start the main program loop
-    while True:
-        print("1. Run latency test")
-        print("2. Send commands")
-        print("3. Regression test")
-        print("4. Exit")
-        print()
-        choice = input("Enter your choice: ")
-        if choice == "1":
-            print("Running test...")
-            # Run the test
-            current_mode = "latency"
-            latency_test.execute_test(ser)
-            print()
-        elif choice == "2":
-            current_mode = "command"
-            send_command(ser)
-            print()
-        elif choice == "3":
-            current_mode = "regression"
-            regression_tests.execute_test(ser)
-            print()
-        elif choice == "4":
-            print("Exiting...")
-            # Wait for the read thread to finish
-            print("Stopping read thread and closing serial port...")
-            exit_program(ser, read_thread)
-        else:
-            print("Invalid choice")
-            print()
+    curses.wrapper(main)
