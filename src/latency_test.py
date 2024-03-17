@@ -1,10 +1,9 @@
-import serial
+import os
 import time
 import datetime
-import threading
 import json
-from cobs import cobs
 import random
+from cobs import cobs
 from alive_progress import alive_bar
 
 
@@ -35,7 +34,7 @@ class LatencyTest:
         message = cobs.encode(payload)
         message += b"\x00"
         self.ser.write(message)
-        self.logger.display_log(f"Published (encoded) `{message}`, counter {counter}")
+        print(f"Published (encoded) `{message}`, counter {counter}")
 
     # Main test
     def main_test(
@@ -47,10 +46,19 @@ class LatencyTest:
         formatted_datetime = current_datetime.strftime("%Y%m%d_%H%M%S")
         # Output filename
         filename = "output.json"
-        output_filename = f"../tests/{formatted_datetime}_{filename}"
-
+        output_filename = f"{formatted_datetime}_{filename}"
+        # Format the output directory path
+        script_directory = os.path.dirname(os.path.abspath(__file__))
+        project_root_relative_path = ".."  # Move up one level to the project root
+        tests_folder_relative_path = "tests"
+        file_path = os.path.join(
+            script_directory,
+            project_root_relative_path,
+            tests_folder_relative_path,
+            output_filename,
+        )
         # Open the file in append mode
-        output_file = open(output_filename, "w")
+        output_file = open(file_path, "w")
 
         # Prepare the data to store in JSON format
         output_data = []
@@ -64,11 +72,11 @@ class LatencyTest:
 
                 # Calculate the waiting time
                 waiting_time = min_wait + (max_wait - min_wait) * (j / (num_times - 1))
-                self.logger.display_log(f"Test {j}, waiting time: {waiting_time} s")
+                print(f"Test {j}, waiting time: {waiting_time} s")
                 random_max = (max_wait - min_wait) * 0.2
 
                 for i in range(0, samples):
-                    publish(i)
+                    self.publish(i)
                     if jitter == True:
                         # Sleep for a random amount of time
                         time.sleep(waiting_time + random.uniform(0, random_max))
@@ -78,13 +86,13 @@ class LatencyTest:
 
                 # Calculate the average latency
                 latency_avg = sum(self.latency_results) / len(self.latency_results)
-                self.logger.display_log(f"Average latency: {latency_avg * 1e3} ms")
+                print(f"Average latency: {latency_avg * 1e3} ms")
                 # Calculate minimum latency
                 latency_min = min(self.latency_results)
-                self.logger.display_log(f"Minimum latency: {latency_min * 1e3} ms")
+                print(f"Minimum latency: {latency_min * 1e3} ms")
                 # Calculate maximum latency
                 latency_max = max(self.latency_results)
-                self.logger.display_log(f"Maximum latency: {latency_max * 1e3} ms")
+                print(f"Maximum latency: {latency_max * 1e3} ms")
                 latency_results_copy[j] = self.latency_results.copy()
 
                 # Write the data to the output file
@@ -115,27 +123,32 @@ class LatencyTest:
                 counter = decoded_data[5]
                 latency = time.time() - self.latency_message[counter]
                 self.latency_results.append(latency)
-                self.logger.display_log(
-                    f"Message {counter} latency: {latency * 1e3} ms"
-                )
+                print(f"Message {counter} latency: {latency * 1e3} ms")
 
             except IndexError:
-                self.logger.display_log("Invalid message (Index Error)")
+                print("Invalid message (Index Error)")
                 return
 
     def execute_test(self):
 
         if self.ser == None:
-            self.logger.display_log("No serial port found. Quitting test.")
+            print("No serial port found. Quitting test.")
             return
 
-        self.logger.display_log("Waiting to start test for 5 seconds...")
-        time.sleep(5)
+        try:
+            print(
+                "Waiting to start test for 5 seconds (press CTRL+C to interrupt test)..."
+            )
+            time.sleep(5)
 
-        # Run the test
-        main_test(num_times=10, max_wait=0.7, min_wait=0, samples=255)
+            # Run the test
+            self.main_test(num_times=10, max_wait=0.7, min_wait=0, samples=255)
 
-        # Run again with jitter
-        main_test(num_times=10, max_wait=0.7, min_wait=0, samples=255, jitter=True)
+            # Run again with jitter
+            self.main_test(
+                num_times=10, max_wait=0.7, min_wait=0, samples=255, jitter=True
+            )
 
-        self.logger.display_log("Test ended")
+            print("Test ended")
+        except KeyboardInterrupt:
+            pass

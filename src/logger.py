@@ -1,4 +1,3 @@
-import curses
 from datetime import datetime
 
 
@@ -11,8 +10,7 @@ class Logger:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, log_window, max_log_messages):
-        self.log_window = log_window
+    def __init__(self, max_log_messages):
         self.log_messages = []
         self.max_log_messages = max_log_messages
 
@@ -26,8 +24,6 @@ class Logger:
         if len(self.log_messages) > self.max_log_messages:
             self.log_messages.pop(0)  # Remove the oldest message
 
-        self.log_window.clear()
-        for i, msg in enumerate(self.log_messages):
-            self.log_window.addstr(i, 0, msg + "\n")
-
-        self.log_window.refresh()
+    def show_log(self):
+        for msg in enumerate(self.log_messages):
+            print(msg)
