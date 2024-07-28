@@ -1,5 +1,6 @@
 # VS COde
 .vscode
+.DS_Store
 
 # Remove test results folder
 /tests
