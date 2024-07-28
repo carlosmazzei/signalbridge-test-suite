@@ -28,9 +28,14 @@ def open_serial(port, baudrate, timeout):
         logger.display_log(f"Serial port opened: {ser}")
         return ser
 
+    except serial.SerialException as e:
+        # Print the exception
+        logger.display_log("Error opening serial port")
+        logger.display_log(f"Exception: {e}")
+        return None
+
     except Exception as e:
         # Print the exception
-        logger.display_log("Error opening and configuring serial port")
         logger.display_log(f"Exception: {e}")
         return None
 
@@ -183,7 +188,7 @@ def main():
             logger.show_log()
             display_menu()
 
-            key = input("Enter a choice:")
+            key = input("Enter a choice: ")
             if key == "1":
                 os.system("clear")
                 logger.display_log("Running test...")

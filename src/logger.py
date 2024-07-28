@@ -2,6 +2,7 @@ from datetime import datetime
 
 
 class Logger:
+    """Log messages to the stack so it can be printed in the correct order"""
 
     _instance = None
 
@@ -15,6 +16,7 @@ class Logger:
         self.max_log_messages = max_log_messages
 
     def display_log(self, message):
+        """Append messages to the end of the logger"""
 
         # Add timestamp between brackets before message
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -25,5 +27,7 @@ class Logger:
             self.log_messages.pop(0)  # Remove the oldest message
 
     def show_log(self):
-        for msg in enumerate(self.log_messages):
+        """Show the log in the log stack"""
+
+        for _, msg in enumerate(self.log_messages):
             print(msg)
