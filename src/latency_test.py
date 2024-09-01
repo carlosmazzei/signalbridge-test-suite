@@ -1,50 +1,63 @@
-import os
-import time
 import datetime
 import json
+import os
 import random
-from cobs import cobs
+import time
+from typing import Any
+
 from alive_progress import alive_bar
+from checksum import calculate_checksum
+from cobs import cobs
+from logger import Logger
+from serial import Serial
 
 
 class LatencyTest:
-    """Latency test class. Implement a roundtrip message to measure timing"""
+    """Latency test class. Implement a roundtrip message to measure timing."""
 
     _instance = None
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, *args: Any, **kwargs: Any):
+        """Create new instance."""
         if not cls._instance:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, ser, logger):
+    def __init__(self, ser: Serial, logger: Logger):
+        """Initialize Latency Test Class."""
         self.logger = logger
         self.ser = ser
-        self.latency_message = [0] * 255
+        self.latency_message = [0.0] * 255
         self.latency_results = []
 
     # Send 10 byte message to the interface and wait for response. Log the time taken.
-    def publish(self, iteration_counter: int):
-        """Function to send messages"""
-
+    def publish(self, iteration_counter: int) -> None:
+        """Send messages."""
         header = bytes([0x00, 0x34, 0x03, 0x01, 0x02])
         counter = iteration_counter.to_bytes(1, byteorder="big")
         payload = header + counter
 
         start_time = time.time()
-        self.latency_message[int.from_bytes(counter, byteorder="big")] = start_time
+        self.latency_message[iteration_counter] = start_time
 
-        message = cobs.encode(payload)
-        message += b"\x00"
+        # Calculate the checksum and append it to the payload
+        checksum = calculate_checksum(payload)
+        payload_with_checksum = payload + bytes([checksum])
+        message = cobs.encode(payload_with_checksum) + b"\x00"
+
         self.ser.write(message)
         print(f"Published (encoded) `{message}`, counter {counter}")
 
     # Main test
     def main_test(
-        self, num_times=10, max_wait=0.5, min_wait=0, samples=255, jitter=False
-    ):
-        """Execute the main test given the desired parameters"""
-
+        self,
+        num_times: int = 10,
+        max_wait: float = 0.5,
+        min_wait: float = 0,
+        samples: int = 255,
+        jitter: bool = False,
+    ) -> None:
+        """Execute the main test given the desired parameters."""
         # Get the current date and time
         current_datetime = datetime.datetime.now()
         # Format the date and time as a string
@@ -64,7 +77,6 @@ class LatencyTest:
         )
         # Open the file in append mode
         with open(file_path, "w", encoding="utf-8") as output_file:
-
             # Prepare the data to store in JSON format
             output_data = []
             latency_results_copy = [[] for _ in range(num_times)]
@@ -86,7 +98,10 @@ class LatencyTest:
                         self.publish(i)
                         if jitter is True:
                             # Sleep for a random amount of time
-                            time.sleep(waiting_time + random.uniform(0, random_max))
+                            time.sleep(
+                                waiting_time
+                                + random.uniform(0, random_max)  # noqa: S311
+                            )
                         else:
                             time.sleep(waiting_time)
                         pbar()
@@ -124,9 +139,8 @@ class LatencyTest:
             output_file.flush()
             output_file.close()
 
-    def handle_message(self, command, decoded_data):
-        """Handle the return message. Calculate roundtrip time and store"""
-
+    def handle_message(self, command: int, decoded_data: bytes) -> None:
+        """Handle the return message. Calculate roundtrip time and store."""
         if command == 20:
             try:
                 counter = decoded_data[5]
@@ -138,9 +152,8 @@ class LatencyTest:
                 print("Invalid message (Index Error)")
                 return
 
-    def execute_test(self):
-        """Main test function"""
-
+    def execute_test(self) -> None:
+        """Execute main test function."""
         if self.ser is None:
             print("No serial port found. Quitting test.")
             return
