@@ -42,13 +42,10 @@ class LatencyTest:
         jitter: bool = False,
     ) -> None:
         """Execute the main test given the desired parameters."""
-        # Get the current date and time
+        # Get the current date and time and format date ant time as string
         current_datetime = datetime.datetime.now(tz=datetime.UTC)
-        # Format the date and time as a string
         formatted_datetime = current_datetime.strftime("%Y%m%d_%H%M%S")
-        # Output filename
-        filename = "output.json"
-        output_filename = f"{formatted_datetime}_{filename}"
+        output_filename = f"{formatted_datetime}_output.json"
         # Get the current script's directory
         script_directory = Path(__file__).parent
         # Move up one level to the project root and then to the tests folder
@@ -125,7 +122,6 @@ class LatencyTest:
                 latency = time.time() - self.latency_message[counter]
                 self.latency_results.append(latency)
                 print(f"Message {counter} latency: {latency * 1e3} ms")
-
             except IndexError:
                 print("Invalid message (Index Error)")
                 return

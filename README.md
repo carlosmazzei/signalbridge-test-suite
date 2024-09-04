@@ -1,143 +1,143 @@
 # UART Test Routines
 
-This project includes:
+This project includes UART testing tools for the simulator interface, featuring a latency test and a simple interface to send commands.
+
+## Project Structure
+
+```shell
+project_root/
+│
+├── src/
+│   ├── latency_test.py
+│   ├── serial_interface.py
+│   ├── application_manager.py
+│   ├── logger.py
+│   └── checksum.py
+│
+├── tests/
+│   └── regression_tests.py
+│
+├── requirements.txt
+└── README.md
+```
+
+## Features
 
 - UART Latency test for ESP32 and CP2102
-- Simple interface to send commands
-
-Run program to calculate latency of a set of echo messages sent to the controller
-
-To install dependencies and create a virtual environment in Python, you can use the following steps:
+- Simple interface to send custom commands
+- Regression testing capabilities
+- Extensible architecture for adding new test modes
 
 ## Project Setup
 
 1. **Install Python:**
+   Ensure Python 3.7+ is installed on your system. Download from [python.org](https://www.python.org/downloads/).
 
-   Make sure Python is installed on your system. You can download the latest version from the official Python website: [https://www.python.org/downloads/](https://www.python.org/downloads/)
-
-2. **Install `virtualenv` (if not installed):**
-
-   Open a terminal or command prompt and run the following command to install `virtualenv` globally:
+2. **Clone the Repository:**
 
    ```sh
-   pip install virtualenv
+   git clone https://github.com/carlosmazzei/uart-latency-test.git
+   cd uart-latency-test
    ```
 
-3. **Create a Virtual Environment:**
-
-   Choose or create a directory where you want to store your project and navigate to it using the terminal or command prompt. Then, run the following command to create a virtual environment:
+3. **Create and Activate a Virtual Environment:**
 
    ```sh
-   virtualenv venv
+   python -m venv venv
+   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
    ```
 
-   Replace `venv` with the desired name for your virtual environment.
-
-4. **Activate the Virtual Environment:**
-
-   Activate the virtual environment using the appropriate command based on your operating system:
-
-   - On Windows:
-
-   ```sh
-   venv\Scripts\activate
-   ```
-
-   - On macOS and Linux:
-
-   ```sh
-   source venv/bin/activate
-   ```
-
-   Once activated, you should see the virtual environment's name in your command prompt or terminal, indicating that you are now working within the virtual environment.
-
-5. **Install Dependencies:**
-
-   With the virtual environment activated, you can use `pip` to install the required dependencies for your project. For example:
-
-   ```sh
-   pip install package_name
-   ```
-
-   Replace `package_name` with the actual name of the package you want to install. You can also install dependencies from a `requirements.txt` file using:
+4. **Install Dependencies:**
 
    ```sh
    pip install -r requirements.txt
    ```
 
-6. **Deactivate the Virtual Environment:**
+## Running the Application
 
-   When you're done working in the virtual environment, you can deactivate it using the following command:
-
-   ```sh
-   deactivate
-   ```
-
-   By following these steps, you can create and activate a virtual environment, install dependencies, and manage your project's dependencies in an isolated environment. This helps in avoiding conflicts between different projects and ensures that your project uses the specified versions of libraries.
-
-## Test Application
-
-Use the following command to run the application:
+Execute the main script:
 
 ```sh
-python3 latency_test.py
+python src/main.py
 ```
 
-And you should see the menu:
+You'll see the following menu:
 
 ```sh
-1. Run test
-2. Send commands
-3. Exit
+1. Run latency test
+2. Send command
+3. Regression test
+4. Exit
 ```
 
-### Run test
+### 1. Run Latency Test
 
-This option will start the latency test
-
-The test message sent is
+This option initiates the UART latency test. The test message format is:
 
 | Byte 0 | Byte 1 | Byte 2 | Byte 3 | Byte 4 | Byte 5 | Byte 6 | Byte 7 | Byte 8 | Byte 9 |
-|--------|--------|--------|--------|--------|--------|--------|--------|--------|--------|
-| x00    | x34    | x03    | x01    | x02    | x03    | ?      | ?      | ?      | ?      |
-|00000000|00110100|00000011|00000001|00000010|00000011| ?      | ?      | ?      | ?      |
+| ------ | ------ | ------ | ------ | ------ | ------ | ------ | ------ | ------ | ------ |
+| 0x00   | 0x34   | 0x03   | 0x01   | 0x02   | 0x03   | ?      | ?      | ?      | ?      |
 
-Corresponding to (packet total of 10 bytes)
+- Id: 1 (First 11 bits)
+- Cmd: 20 (PC_ECHO_CMD) (5 bits)
+- Length: 3
+- Data: [0x01, 0x02, 0x03]
 
-- Id = 1 (First 11 bits)
-- Cmd = 20 (PC_ECHO_CMD) (5 bits)
-- Length = 3
-- Data Byte 1 = 1
-- Data byte 2 = 2
-- Data byte 3 = 3 (used as identifier)
-- Other bytes not initialized
+Test results are saved in `./tests/{timestamp}_output.json`.
 
-The test will create and output file in the following format: `./tests/{formatted_datetime}_{filename}`
+### 2. Send Command
 
-Where filename is `output.json`
+Use this option to send custom commands for testing other functions. For example, to request heap status:
 
-### Test Parameters
+| Byte 0 | Byte 1 | Byte 2 | Byte 3 | Byte 4 | Byte 5 | Byte 6 | Byte 7 | Byte 8 | Byte 9 |
+| ------ | ------ | ------ | ------ | ------ | ------ | ------ | ------ | ------ | ------ |
+| 0x00   | 0x38   | 0x01   | 0x01   | ?      | ?      | ?      | ?      | ?      | ?      |
 
-You can change the test parameters accordingly
+### 3. Regression Test
+
+Runs a series of predefined tests to ensure system stability and performance.
+
+## Configuration
+
+You can modify test parameters in `src/latency_test.py`:
 
 ```python
-def main_test(ser, num_times=10, max_wait=0.5, min_wait=0, samples=255, jitter=False)
+app_manager.run_latency_test(num_times=10, max_wait=0.5, min_wait=0, samples=255, jitter=False)
 ```
 
-- ser: Serial interface client created
-- num_times: Number of times to run the test cases
-- max_wait: Maximum wait time in milliseconds between samples
-- min_wait: Minimum wait time in milliseconds between samples
-- samples: Number of samples (max of 255)
-- jitter: Boolean to identify to add jitter to the wait time (20% of max wait time and an uniform distribution)
+- `num_times`: Number of test iterations
+- `max_wait`: Maximum wait time between samples (seconds)
+- `min_wait`: Minimum wait time between samples (seconds)
+- `samples`: Number of samples per test (max 255)
+- `jitter`: Add random jitter to wait times (boolean)
 
-### Send commands
+## Development
 
-This menu option is used to send desired commands to the interface in order to test other functions
+### Adding New Test Modes
 
-For example sending the heap status command to get:  
+1. Create a new module in the `src/` directory.
+2. Implement the test logic.
+3. Add a new method in `ApplicationManager` to run the test.
+4. Update the main menu in `application_manager.py` to include the new test option.
 
-| Byte 0 | Byte 1 | Byte 2 | Byte 3 | Byte 4 | Byte 5 | Byte 6 | Byte 7 | Byte 8 | Byte 9 |
-|--------|--------|--------|--------|--------|--------|--------|--------|--------|--------|
-| x00    | x38    | x01    | x01    | ?      | ?      | ?      | ?      | ?      | ?      |
-|00000000|00111000|00000001|00000001| ?      | ?      | ?      | ?      | ?      | ?      |
+### Modifying Existing Tests
+
+- Latency Test: Update `LatencyTest` class in `src/latency_test.py`.
+- Regression Tests: Modify `src/regression_tests.py`.
+
+## Troubleshooting
+
+- Ensure the correct COM port is set in `latency_test.py`.
+- Verify that the UART device is properly connected and recognized by your system.
+- Check the log output for any error messages or unexpected behavior.
+
+## Contributing
+
+1. Fork the repository.
+2. Create a new branch for your feature.
+3. Commit your changes and push to your fork.
+4. Create a pull request with a description of your changes.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
