@@ -1,29 +1,18 @@
 import datetime
 import json
-import os
 import random
 import time
-from typing import Any
+from pathlib import Path
 
 from alive_progress import alive_bar
-from checksum import calculate_checksum
-from cobs import cobs
 from logger import Logger
-from serial import Serial
+from serial_interface import SerialCommand, SerialInterface
 
 
 class LatencyTest:
     """Latency test class. Implement a roundtrip message to measure timing."""
 
-    _instance = None
-
-    def __new__(cls, *args: Any, **kwargs: Any):
-        """Create new instance."""
-        if not cls._instance:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __init__(self, ser: Serial, logger: Logger):
+    def __init__(self, ser: SerialInterface, logger: Logger):
         """Initialize Latency Test Class."""
         self.logger = logger
         self.ser = ser
@@ -39,44 +28,33 @@ class LatencyTest:
 
         start_time = time.time()
         self.latency_message[iteration_counter] = start_time
-
-        # Calculate the checksum and append it to the payload
-        checksum = calculate_checksum(payload)
-        payload_with_checksum = payload + bytes([checksum])
-        message = cobs.encode(payload_with_checksum) + b"\x00"
-
-        self.ser.write(message)
-        print(f"Published (encoded) `{message}`, counter {counter}")
+        self.ser.write(payload)
+        print(f"Published (encoded) `{payload}`, counter {counter}")
 
     # Main test
-    def main_test(
+    def main_test(  # noqa: PLR0913
         self,
         num_times: int = 10,
         max_wait: float = 0.5,
         min_wait: float = 0,
         samples: int = 255,
+        *,
         jitter: bool = False,
     ) -> None:
         """Execute the main test given the desired parameters."""
         # Get the current date and time
-        current_datetime = datetime.datetime.now()
+        current_datetime = datetime.datetime.now(tz=datetime.UTC)
         # Format the date and time as a string
         formatted_datetime = current_datetime.strftime("%Y%m%d_%H%M%S")
         # Output filename
         filename = "output.json"
         output_filename = f"{formatted_datetime}_{filename}"
-        # Format the output directory path
-        script_directory = os.path.dirname(os.path.abspath(__file__))
-        project_root_relative_path = ".."  # Move up one level to the project root
-        tests_folder_relative_path = "tests"
-        file_path = os.path.join(
-            script_directory,
-            project_root_relative_path,
-            tests_folder_relative_path,
-            output_filename,
-        )
+        # Get the current script's directory
+        script_directory = Path(__file__).parent
+        # Move up one level to the project root and then to the tests folder
+        file_path = script_directory.parent / "tests" / output_filename
         # Open the file in append mode
-        with open(file_path, "w", encoding="utf-8") as output_file:
+        with Path(file_path).open("w", encoding="utf-8") as output_file:
             # Prepare the data to store in JSON format
             output_data = []
             latency_results_copy = [[] for _ in range(num_times)]
@@ -94,13 +72,13 @@ class LatencyTest:
                     print(f"Test {j}, waiting time: {waiting_time} s")
                     random_max = (max_wait - min_wait) * 0.2
 
-                    for i in range(0, samples):
+                    for i in range(samples):
                         self.publish(i)
                         if jitter is True:
                             # Sleep for a random amount of time
                             time.sleep(
                                 waiting_time
-                                + random.uniform(0, random_max)  # noqa: S311
+                                + random.uniform(0, random_max),  # noqa: S311
                             )
                         else:
                             time.sleep(waiting_time)
@@ -127,7 +105,7 @@ class LatencyTest:
                             "latency_avg": latency_avg,
                             "latency_min": latency_min,
                             "latency_max": latency_max,
-                        }
+                        },
                     )
 
                     # Sleep for 10 seconds
@@ -141,7 +119,7 @@ class LatencyTest:
 
     def handle_message(self, command: int, decoded_data: bytes) -> None:
         """Handle the return message. Calculate roundtrip time and store."""
-        if command == 20:
+        if command == SerialCommand.ECHO_COMMAND:
             try:
                 counter = decoded_data[5]
                 latency = time.time() - self.latency_message[counter]
@@ -160,16 +138,26 @@ class LatencyTest:
 
         try:
             print(
-                "Waiting to start test for 5 seconds (press CTRL+C to interrupt test)..."
+                "Waiting to start test for 5 seconds (press CTRL+C to interrupt test)...",
             )
             time.sleep(5)
 
             # Run the test
-            self.main_test(num_times=10, max_wait=0.7, min_wait=0, samples=255)
+            self.main_test(
+                num_times=10,
+                max_wait=0.7,
+                min_wait=0,
+                samples=255,
+                jitter=False,
+            )
 
             # Run again with jitter
             self.main_test(
-                num_times=10, max_wait=0.7, min_wait=0, samples=255, jitter=True
+                num_times=10,
+                max_wait=0.7,
+                min_wait=0,
+                samples=255,
+                jitter=True,
             )
 
             print("Test ended")

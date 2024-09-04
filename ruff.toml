@@ -33,21 +33,14 @@ line-length = 88
 indent-width = 4
 
 # Assume Python 3.8
-target-version = "py38"
+target-version = "py312"
 
 [lint]
 # Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
 # Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
 # McCabe complexity (`C901`) by default.
 select = [
-    "ANN",  # flake8-annotations
-    "E",  # flake8
-    "F",  # flake8
-    "I",  # isort
-    "D",  # pydocstyle
-    "S",  # flake8-bandit
-    "NPY",  # numpy-specific rules
-    "RUF",  # ruff specific rules
+    "ALL",
 ]
 ignore = [
     "E501",
@@ -64,6 +57,8 @@ ignore = [
     "D100",  # Missing docstring in public module
     "D104",  # Missing docstring in public package
     "D106",  # Missing docstring in public nested class
+
+    "T201",  # Checks for print statements
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.

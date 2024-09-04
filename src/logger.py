@@ -1,17 +1,8 @@
-from datetime import datetime
-from typing import Any
+import datetime
 
 
 class Logger:
     """Log messages to the stack so it can be printed in the correct order."""
-
-    _instance = None
-
-    def __new__(cls, *args: Any, **kwargs: str):
-        """Check if instance already exists."""
-        if not cls._instance:
-            cls._instance = super().__new__(cls)
-        return cls._instance
 
     def __init__(self, max_log_messages: int):
         """Initialize the logger with a maximum number of log messages to store."""
@@ -21,7 +12,7 @@ class Logger:
     def display_log(self, message: str) -> None:
         """Append messages to the end of the logger."""
         # Add timestamp between brackets before message
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%H:%M:%S")
         message = f"[{timestamp}] {message}"
 
         self.log_messages.append(message)
