@@ -10,10 +10,8 @@ def main() -> None:
     port = "/dev/cu.usbmodem1234561"
     app_manager = ApplicationManager(port, 115200, 0.1, logger)
 
-    if app_manager.initialize():
-        app_manager.run()
-    else:
-        logger.show_log()
+    app_manager.initialize()
+    app_manager.run()
 
 
 if __name__ == "__main__":
