@@ -4,9 +4,12 @@ import random
 import time
 from pathlib import Path
 
+import numpy as np
 from alive_progress import alive_bar
 from logger import Logger
 from serial_interface import SerialCommand, SerialInterface
+
+MAX_SAMPLE_SIZE = 255
 
 
 class LatencyTest:
@@ -29,7 +32,7 @@ class LatencyTest:
         start_time = time.time()
         self.latency_message[iteration_counter] = start_time
         self.ser.write(payload)
-        print(f"Published (encoded) `{payload}`, counter {counter}")
+        print(f"Published (encoded) `{payload}`, counter {iteration_counter}")
 
     # Main test
     def main_test(  # noqa: PLR0913
@@ -42,6 +45,10 @@ class LatencyTest:
         jitter: bool = False,
     ) -> None:
         """Execute the main test given the desired parameters."""
+        if samples > MAX_SAMPLE_SIZE:
+            msg = "Samples must be less than or equal to 255"
+            raise ValueError(msg)
+
         # Get the current date and time and format date ant time as string
         current_datetime = datetime.datetime.now(tz=datetime.UTC)
         formatted_datetime = current_datetime.strftime("%Y%m%d_%H%M%S")
@@ -81,16 +88,29 @@ class LatencyTest:
                             time.sleep(waiting_time)
                         pbar()
 
+                    # Calculate dropped messages
+                    dropped_messages = samples - len(self.latency_results)
+                    print(f"Dropped messages: {dropped_messages}")
+
                     # Calculate the average latency
-                    latency_avg = sum(self.latency_results) / len(self.latency_results)
-                    print(f"Average latency: {latency_avg * 1e3} ms")
-                    # Calculate minimum latency
-                    latency_min = min(self.latency_results)
-                    print(f"Minimum latency: {latency_min * 1e3} ms")
-                    # Calculate maximum latency
-                    latency_max = max(self.latency_results)
-                    print(f"Maximum latency: {latency_max * 1e3} ms")
-                    latency_results_copy[j] = self.latency_results.copy()
+                    if len(self.latency_results) == 0:
+                        print("No results collected for this test.")
+                        latency_avg = latency_min = latency_max = latency_p95 = 0
+                    else:
+                        latency_avg = sum(self.latency_results) / len(
+                            self.latency_results,
+                        )
+                        print(f"Average latency: {latency_avg * 1e3} ms")
+                        # Calculate minimum latency
+                        latency_min = min(self.latency_results)
+                        print(f"Minimum latency: {latency_min * 1e3} ms")
+                        # Calculate maximum latency
+                        latency_max = max(self.latency_results)
+                        print(f"Maximum latency: {latency_max * 1e3} ms")
+                        # Calculate the p95 latency
+                        latency_p95 = np.percentile(self.latency_results, 95)
+                        print(f"P95 latency: {latency_p95 * 1e3} ms")
+                        latency_results_copy[j] = self.latency_results.copy()
 
                     # Write the data to the output file
                     output_data.append(
@@ -102,6 +122,8 @@ class LatencyTest:
                             "latency_avg": latency_avg,
                             "latency_min": latency_min,
                             "latency_max": latency_max,
+                            "latency_p95": latency_p95,
+                            "dropped_messages": dropped_messages,
                         },
                     )
 
@@ -116,7 +138,7 @@ class LatencyTest:
 
     def handle_message(self, command: int, decoded_data: bytes) -> None:
         """Handle the return message. Calculate roundtrip time and store."""
-        if command == SerialCommand.ECHO_COMMAND:
+        if command == SerialCommand.ECHO_COMMAND.value:
             try:
                 counter = decoded_data[5]
                 latency = time.time() - self.latency_message[counter]

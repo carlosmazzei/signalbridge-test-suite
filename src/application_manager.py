@@ -63,8 +63,9 @@ class ApplicationManager:
         if self.mode == Mode.LATENCY and self.latency_test:
             self.latency_test.handle_message(command, decoded_data)
         elif self.mode == Mode.COMMAND:
-            if command != SerialCommand.ANALOG_COMMAND:
-                self.logger.display_log(
+            # Filter analog command to not clutter the output
+            if command != SerialCommand.ANALOG_COMMAND.value:
+                print(
                     f"Received raw: {byte_string}, decoded: {decoded_data}",
                 )
                 self.print_decoded_message(decoded_data)
@@ -75,29 +76,29 @@ class ApplicationManager:
         """Print each byte of the message."""
         logout = ""
         for i, msg in enumerate(message):
-            logout += f"{i}: {msg}"
+            logout += f"{i}: {msg} | "
 
-        self.logger.display_log(f"Decoded message: {logout}")
+        print(f"Decoded message: {logout}")
         rxid = message[0]
         rxid <<= 3
         rxid |= (message[1] & 0xE0) >> 5
         command = message[1] & 0x1F
         length = message[2]
         checksum = message[length + 1]
-        self.logger.display_log(f"Id: {rxid}, Command: {command}, Checksum: {checksum}")
+        print(f"Id: {rxid}, Command: {command}, Checksum: {checksum}")
 
-        if command == SerialCommand.KEY_COMMAND:
+        if command == SerialCommand.KEY_COMMAND.value:
             state = message[3] & 0x01
             col = (message[3] >> 4) & 0x0F
             row = (message[3] >> 1) & 0x0F
-            self.logger.display_log(
+            print(
                 f"Column: {col}, Row: {row}, State: {state}, Length: {length}",
             )
-        elif command == SerialCommand.ANALOG_COMMAND:
+        elif command == SerialCommand.ANALOG_COMMAND.value:
             channel = message[3]
             value = message[4] << 8
             value |= message[5]
-            self.logger.display_log(f"Channel: {channel}, Value: {value}")
+            print(f"Channel: {channel}, Value: {value}")
 
     def run_latency_test(self) -> None:
         """Run latency test."""

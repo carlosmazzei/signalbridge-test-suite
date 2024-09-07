@@ -17,7 +17,7 @@ class RegressionTest:
         byte_string: bytes,
     ) -> None:
         """Handle message for regression test."""
-        if command == SerialCommand.ECHO_COMMAND:
+        if command == SerialCommand.ECHO_COMMAND.value:
             try:
                 if decoded_data == bytes([0x00, 0x34, 0x02, 0x01, 0x02]):
                     self.logger.display_log("[OK] Echo command")
