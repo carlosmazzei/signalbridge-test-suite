@@ -67,7 +67,7 @@ class ApplicationManager:
             self.serial_interface.set_message_handler(self.handle_message)
             self.serial_interface.start_reading()
             self.latency_test = LatencyTest(self.serial_interface, self.logger)
-            self.command_mode = CommandMode(self.serial_interface, self.logger)
+            self.command_mode = CommandMode(self.serial_interface)
             self.available_modes.update([Mode.LATENCY, Mode.COMMAND, Mode.REGRESSION])
             self.logger.display_log("Serial interface opened successfully.")
         else:
