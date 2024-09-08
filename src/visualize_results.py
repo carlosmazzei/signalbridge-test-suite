@@ -17,7 +17,6 @@ class VisualizeResults:
         """Select a test file from the tests folder."""
         tests_folder: Path = Path(__file__).parent.parent / "tests"
         files: list[Path] = sorted(tests_folder.glob("*.json"))
-
         if not files:
             self.logger.display_log("No test files found in the tests folder.")
             return None
@@ -66,6 +65,7 @@ class VisualizeResults:
 
         labels = []
         test_data = []
+        stats_data = []
 
         for series in data:
             series_data = np.array(series["results"]) * 1000
@@ -74,13 +74,72 @@ class VisualizeResults:
             labels.append(series_name)
             test_data.append(series_data)
 
-        _, ax = plt.subplots(figsize=(12, 6))
-        ax.boxplot(test_data, label=labels, showmeans=True)
-        ax.set_title("Latency percentiles")
-        ax.set_xlabel("Test cases / waiting time in ms")
-        ax.set_ylabel("Latency (ms)")
-        plt.yscale("log")
-        plt.xticks(rotation=45, ha="right")
+            stats_data.append(
+                {
+                    "avg": series["latency_avg"] * 1000,
+                    "min": series["latency_min"] * 1000,
+                    "max": series["latency_max"] * 1000,
+                    "p95": series["latency_p95"] * 1000,
+                },
+            )
+
+        _, (ax1, ax2) = plt.subplots(
+            2,
+            1,
+            figsize=(12, 10),
+            gridspec_kw={"height_ratios": [2, 1]},
+        )
+
+        # Boxplot
+        ax1.boxplot(test_data, labels=labels, showmeans=True)
+        ax1.set_title(f"Latency Percentiles (Samples = {series["samples"]})")
+        ax1.set_xlabel("Test cases / waiting time in ms")
+        ax1.set_ylabel("Latency (ms)")
+        ax1.set_yscale("log")
+        ax1.grid(axis="y", linestyle="--", alpha=0.7)
+        plt.setp(ax1.get_xticklabels(), rotation=45, ha="right")
+
+        # Statistics subplot
+        x = np.arange(len(labels))
+        width = 0.2
+
+        ax2.bar(
+            x - 1.5 * width,
+            [s["avg"] for s in stats_data],
+            width,
+            label="Avg",
+            alpha=0.8,
+        )
+        ax2.bar(
+            x - 0.5 * width,
+            [s["min"] for s in stats_data],
+            width,
+            label="Min",
+            alpha=0.8,
+        )
+        ax2.bar(
+            x + 0.5 * width,
+            [s["max"] for s in stats_data],
+            width,
+            label="Max",
+            alpha=0.8,
+        )
+        ax2.bar(
+            x + 1.5 * width,
+            [s["p95"] for s in stats_data],
+            width,
+            label="P95",
+            alpha=0.8,
+        )
+
+        ax2.set_ylabel("Latency (ms)")
+        ax2.set_title("Latency Statistics")
+        ax2.set_xticks(x)
+        ax2.set_xticklabels(labels)
+        ax2.legend()
+        ax2.grid(axis="y", linestyle="--", alpha=0.7)
+        plt.setp(ax2.get_xticklabels(), rotation=45, ha="right")
+
         plt.tight_layout()
         plt.show()
 
