@@ -160,8 +160,8 @@ class ApplicationManager:
         the chosen option until the user decides to exit.
         """
         try:
+            os.system("clear")  # noqa: S605, S607
             while True:
-                os.system("clear")  # noqa: S605, S607
                 self.logger.show_log()
                 self.display_menu()
 
