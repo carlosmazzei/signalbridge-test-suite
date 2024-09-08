@@ -57,7 +57,7 @@ class VisualizeResults:
     def load_and_process_data(
         self,
         file_path: Path,
-    ) -> tuple[list[str], list[np.ndarray], list[dict[str, float]]] | None:
+    ) -> tuple[list[str], list[np.ndarray], list[dict[str, float]], int] | None:
         """Load and process data from the JSON file."""
         try:
             with file_path.open() as f:
@@ -70,11 +70,13 @@ class VisualizeResults:
             labels = []
             test_data = []
             stats_data = []
+            samples = 0
 
             for series in data:
                 series_data = np.array(series["results"]) * 1000
                 waiting_time = format(series["waiting_time"] * 1000, ".0f")
                 series_name = f"t: {series['test']}\nw.time:\n{waiting_time}"
+                samples += series["samples"]
                 labels.append(series_name)
                 test_data.append(series_data)
 
@@ -96,7 +98,7 @@ class VisualizeResults:
             print(f"Error processing file {file_path}: {e!s}")
             return None
         else:
-            return labels, test_data, stats_data
+            return labels, test_data, stats_data, samples
 
     def plot_data(
         self,
@@ -188,8 +190,7 @@ class VisualizeResults:
         if processed_data is None:
             return
 
-        labels, test_data, stats_data = processed_data
-        samples = len(test_data[0]) if test_data else 0
+        labels, test_data, stats_data, samples = processed_data
         self.plot_data(labels, test_data, stats_data, samples)
 
     def execute_visualization(self) -> None:
