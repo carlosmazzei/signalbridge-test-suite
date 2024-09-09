@@ -1,3 +1,4 @@
+import logging
 import threading
 from collections.abc import Callable
 from enum import Enum
@@ -5,7 +6,11 @@ from enum import Enum
 import serial
 from checksum import calculate_checksum
 from cobs import cobs
-from logger import Logger
+from logger_config import setup_logging
+
+setup_logging()
+
+logger = logging.getLogger(__name__)
 
 
 class SerialCommand(Enum):
@@ -19,12 +24,11 @@ class SerialCommand(Enum):
 class SerialInterface:
     """Interface to communicate with serial port."""
 
-    def __init__(self, port: str, baudrate: int, timeout: float, logger: Logger):
+    def __init__(self, port: str, baudrate: int, timeout: float):
         """Initialize the serial interface."""
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
-        self.logger = logger
         self.ser = None
         self.stop_event = threading.Event()
         self.read_thread = None
@@ -43,10 +47,9 @@ class SerialInterface:
                 xonxoff=False,
                 rtscts=False,
             )
-            self.logger.display_log(f"Serial port opened: {self.ser}")
-        except serial.SerialException as e:
-            self.logger.display_log("Error opening serial port")
-            self.logger.display_log(f"Exception: {e}")
+            logger.info("Serial port opened: %s", self.ser)
+        except serial.SerialException:
+            logger.exception("Error opening serial port.")
             return False
         else:
             return True
@@ -58,12 +61,12 @@ class SerialInterface:
             self.read_thread.join()
         if self.ser:
             self.ser.close()
-            self.logger.display_log("Serial port closed")
+            logger.info("Serial port closed")
 
     def send_command(self, hex_data: str) -> None:
         """Send command."""
         if len(hex_data) % 2 != 0:
-            self.logger.display_log("Invalid hex data")
+            logger.info("Invalid hex data")
             return
 
         payload = bytes.fromhex(hex_data)
@@ -76,9 +79,9 @@ class SerialInterface:
             payload_with_checksum = data + checksum
             message = cobs.encode(payload_with_checksum) + b"\x00"
             self.ser.write(message)
-            self.logger.display_log(f"Published (encoded) `{message}`")
+            logger.info("Published (encoded) `%s`", message)
         else:
-            self.logger.display_log("Serial port not open")
+            logger.info("Serial port not open")
 
     def is_open(self) -> bool:
         """Check if connection is open."""
@@ -96,7 +99,7 @@ class SerialInterface:
 
     def _read_data(self):
         byte_string: bytes = b""
-        self.logger.display_log("Starting read thread...")
+        logger.info("Starting read thread...")
 
         try:
             while not self.stop_event.is_set():
@@ -111,8 +114,7 @@ class SerialInterface:
                     else:
                         byte_string += byte
 
-        except serial.SerialException as e:
-            self.logger.display_log(f"Exception in read thread: {e}")
-            self.logger.display_log("Error reading serial port")
+        except serial.SerialException:
+            logger.exception("Error reading serial port")
             self.stop_event.set()
             self.close()

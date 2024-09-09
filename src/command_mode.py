@@ -5,24 +5,12 @@ import threading
 
 from checksum import calculate_checksum
 from cobs import cobs
+from logger_config import setup_logging
 from serial_interface import SerialCommand, SerialInterface
 
-# Set up logger
-logger = logging.getLogger("CommandMode")
-logger.setLevel(logging.INFO)
+setup_logging()
 
-# Create console handler and set level to INFO
-ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)
-
-# Create formatter
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-
-# Add formatter to ch
-ch.setFormatter(formatter)
-
-# Add ch to logger
-logger.addHandler(ch)
+logger = logging.getLogger(__name__)
 
 
 class CommandMode:
@@ -42,7 +30,6 @@ class CommandMode:
 
         """
         self.serial_interface = serial_interface
-        self.logger = logger
         self.message_queue = queue.Queue()
         self.running = False
         self.input_lock = threading.Lock()
@@ -61,7 +48,7 @@ class CommandMode:
                     self._print_prompt()
                     hex_data = self._get_input()
                     if hex_data.lower() == "x":
-                        self.logger.info("Exiting send command menu...")
+                        logger.info("Exiting send command menu...")
                         self.running = False
                         break
                     self.serial_interface.send_command(hex_data)
@@ -70,7 +57,7 @@ class CommandMode:
 
             message_thread.join()
         else:
-            self.logger.info(
+            logger.info(
                 "Command mode is not available. Serial interface is not connected.",
             )
 
@@ -147,8 +134,12 @@ class CommandMode:
                 cobs_decoded = cobs.decode(byte_string)
                 received_checksum = cobs_decoded[-1:]
                 calculated_checksum = calculate_checksum(cobs_decoded[:-1])
-                self.logger.info(
-                    f"Received raw: {byte_string}, decoded: {decoded_data}, Received Checksum: {received_checksum}, Calculated Checksum: {calculated_checksum}",  # noqa: G004
+                logger.info(
+                    "Received raw: %s, decoded: %s, Received Checksum: %s, Calculated Checksum: %s",
+                    byte_string,
+                    decoded_data,
+                    received_checksum,
+                    calculated_checksum,
                 )
                 self._print_decoded_message(decoded_data)
 
@@ -165,19 +156,23 @@ class CommandMode:
 
         """
         logout = " ".join(f"{i}: {msg}" for i, msg in enumerate(message))
-        self.logger.info(f"Decoded message: {logout}")  # noqa: G004
+        logger.info("Decoded message: %s", logout)
         rxid = (message[0] << 3) | ((message[1] & 0xE0) >> 5)
         command = message[1] & 0x1F
         length = message[2]
-        self.logger.info(f"Id: {rxid}, Command: {command}")  # noqa: G004
+        logger.info("Id: %s, Command: %s", rxid, command)
         if command == SerialCommand.KEY_COMMAND.value:
             state = message[3] & 0x01
             col = (message[3] >> 4) & 0x0F
             row = (message[3] >> 1) & 0x0F
-            self.logger.info(
-                f"Column: {col}, Row: {row}, State: {state}, Length: {length}",  # noqa: G004
+            logger.info(
+                "Column: %s, Row: %s, State: %s, Length: %s",
+                col,
+                row,
+                state,
+                length,
             )
         elif command == SerialCommand.ANALOG_COMMAND.value:
             channel = message[3]
             value = (message[4] << 8) | message[5]
-            self.logger.info(f"Channel: {channel}, Value: {value}")  # noqa: G004
+            logger.info("Channel: %s, Value: %s", channel, value)

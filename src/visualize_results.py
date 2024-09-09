@@ -1,24 +1,25 @@
 import json
+import logging
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from logger import Logger
+from logger_config import setup_logging
+
+setup_logging()
+
+logger = logging.getLogger(__name__)
 
 
 class VisualizeResults:
     """Class to visualize the log files and plot it."""
-
-    def __init__(self, logger: Logger):
-        """Initialize the class with a logger instance."""
-        self.logger = logger
 
     def select_test_file(self) -> Path | None:
         """Select a test file from the tests folder."""
         tests_folder: Path = Path(__file__).parent.parent / "tests"
         files: list[Path] = sorted(tests_folder.glob("*.json"))
         if not files:
-            print("No test files found in the tests folder.")
+            logger.info("No test files found in the tests folder.")
             return None
 
         page_size: int = 10
@@ -50,9 +51,9 @@ class VisualizeResults:
                 idx = int(choice) - 1
                 if 0 <= idx < len(page_files):
                     return page_files[idx]
-                print("Invalid file number. Please try again.")
+                logger.info("Invalid file number. Please try again.")
             else:
-                print("Invalid input. Please try again.")
+                logger.info("Invalid input. Please try again.")
 
     def load_and_process_data(
         self,
@@ -94,8 +95,8 @@ class VisualizeResults:
                 msg = "No valid data to visualize."
                 raise ValueError(msg)  # noqa: TRY301
 
-        except (OSError, KeyError, TypeError, ValueError) as e:
-            print(f"Error processing file {file_path}: {e!s}")
+        except (OSError, KeyError, TypeError, ValueError):
+            logger.exception("Error processing file %s", file_path)
             return None
         else:
             return labels, test_data, stats_data, samples
@@ -177,8 +178,8 @@ class VisualizeResults:
             plt.tight_layout()
             plt.show()
 
-        except Exception as e:  # noqa: BLE001
-            print(f"Error occurred while plotting: {e!s}")
+        except Exception:
+            logger.exception("Error occurred while plotting.")
 
     def visualize_test_results(self) -> None:
         """Plot results."""

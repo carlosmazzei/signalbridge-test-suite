@@ -1,15 +1,20 @@
+import logging
 import os
 from enum import Enum
 from typing import TYPE_CHECKING
 
 from command_mode import CommandMode  # New import for refactored command mode
 from latency_test import LatencyTest
-from logger import Logger
+from logger_config import setup_logging
 from serial_interface import SerialInterface
 from visualize_results import VisualizeResults
 
 if TYPE_CHECKING:
     from regression_test import RegressionTest
+
+setup_logging()
+
+logger = logging.getLogger(__name__)
 
 
 class Mode(Enum):
@@ -29,7 +34,7 @@ class ApplicationManager:
     mode switching, and cleanup.
     """
 
-    def __init__(self, port: str, baudrate: int, timeout: float, logger: Logger):
+    def __init__(self, port: str, baudrate: int, timeout: float):
         """Initialize the application manager.
 
         Args:
@@ -40,12 +45,10 @@ class ApplicationManager:
             logger (Logger): The logger instance to use.
 
         """
-        self.logger: Logger = logger
         self.serial_interface: SerialInterface = SerialInterface(
             port,
             baudrate,
             timeout,
-            logger,
         )
         self.latency_test: LatencyTest | None = None
         self.regression_test: RegressionTest | None = None
@@ -62,16 +65,16 @@ class ApplicationManager:
             bool: True if initialization was successful, False otherwise.
 
         """
-        self.visualize_results = VisualizeResults(self.logger)
+        self.visualize_results = VisualizeResults()
         if self.serial_interface.open():
             self.serial_interface.set_message_handler(self.handle_message)
             self.serial_interface.start_reading()
-            self.latency_test = LatencyTest(self.serial_interface, self.logger)
+            self.latency_test = LatencyTest(self.serial_interface)
             self.command_mode = CommandMode(self.serial_interface)
             self.available_modes.update([Mode.LATENCY, Mode.COMMAND, Mode.REGRESSION])
-            self.logger.display_log("Serial interface opened successfully.")
+            logger.info("Serial interface opened successfully.")
         else:
-            self.logger.display_log(
+            logger.error(
                 "Failed to open serial interface. Some features will be disabled.",
             )
         return True
@@ -102,10 +105,10 @@ class ApplicationManager:
         """Run latency test if available."""
         if Mode.LATENCY in self.available_modes and self.latency_test:
             self.mode = Mode.LATENCY
-            self.logger.display_log("Running latency test...")
+            logger.info("Running latency test...")
             self.latency_test.execute_test()
         else:
-            self.logger.display_log("Latency test not initialized")
+            logger.info("Latency test not initialized")
 
     def run_command_mode(self) -> None:
         """Run command mode if available."""
@@ -113,7 +116,7 @@ class ApplicationManager:
             self.mode = Mode.COMMAND
             self.command_mode.execute_command_mode()
         else:
-            self.logger.display_log(
+            logger.info(
                 "Command mode is not available. Serial interface is not connected.",
             )
 
@@ -123,7 +126,7 @@ class ApplicationManager:
             self.mode = Mode.REGRESSION
             self.regression_test.execute_test()
         else:
-            self.logger.display_log(
+            logger.info(
                 "Regression test is not available. Serial interface is not connected.",
             )
 
@@ -133,11 +136,11 @@ class ApplicationManager:
             self.mode = Mode.VISUALIZE
             self.visualize_results.execute_visualization()
         else:
-            self.logger.display_log("Visualization is not initialized.")
+            logger.info("Visualization is not initialized.")
 
     def cleanup(self) -> None:
         """Cleanup resources and close serial interface."""
-        self.logger.display_log("Stopping read thread and closing serial port...")
+        logger.info("Stopping read thread and closing serial port...")
         self.serial_interface.close()
 
     def display_menu(self) -> None:
@@ -160,9 +163,7 @@ class ApplicationManager:
         the chosen option until the user decides to exit.
         """
         try:
-            os.system("clear")  # noqa: S605, S607
             while True:
-                self.logger.show_log()
                 self.display_menu()
 
                 choice = input("Enter a choice: ")
@@ -176,12 +177,11 @@ class ApplicationManager:
                 elif choice == "4" and Mode.VISUALIZE in self.available_modes:
                     self.run_visualization()
                 elif choice == "5":
-                    self.logger.display_log("Exiting...")
+                    logger.info("Exiting...")
                     break
                 else:
-                    self.logger.display_log("Invalid choice or option not available\n")
-        except Exception as e:  # noqa: BLE001
-            self.logger.display_log(f"Exception in main loop: {e}")
-            self.logger.show_log()
+                    logger.info("Invalid choice or option not available\n")
+        except Exception:
+            logger.exception("Exception in main loop.")
         finally:
             self.cleanup()

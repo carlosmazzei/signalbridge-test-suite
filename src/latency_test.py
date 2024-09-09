@@ -1,5 +1,6 @@
 import datetime
 import json
+import logging
 import random
 import time
 from pathlib import Path
@@ -7,7 +8,7 @@ from typing import Any
 
 import numpy as np
 from alive_progress import alive_bar
-from logger import Logger
+from logger_config import setup_logging
 from serial_interface import SerialCommand, SerialInterface
 
 MAX_SAMPLE_SIZE = 255
@@ -19,10 +20,15 @@ DEFAULT_MIN_WAIT = 0
 DEFAULT_SAMPLES = 255
 
 
+setup_logging()
+
+logger = logging.getLogger(__name__)
+
+
 class LatencyTest:
     """Latency test class. Implement a roundtrip message to measure timing."""
 
-    def __init__(self, ser: SerialInterface, logger: Logger):
+    def __init__(self, ser: SerialInterface):
         """Initialize Latency Test Class.
 
         Args:
@@ -50,7 +56,7 @@ class LatencyTest:
         start_time = time.time()
         self.latency_message[iteration_counter] = start_time
         self.ser.write(payload)
-        print(f"Published (encoded) `{payload}`, counter {iteration_counter}")
+        logger.info("Published (encoded) `%s`, counter %s", payload, iteration_counter)
 
     def main_test(  # noqa: PLR0913
         self,
@@ -192,8 +198,8 @@ class LatencyTest:
             with file_path.open("w", encoding="utf-8") as output_file:
                 json.dump(output_data, output_file, indent=4)
                 print(f"Test results written to {file_path}")
-        except OSError as e:
-            print(f"Error writing to file: {e}")
+        except OSError:
+            logger.exception("Error writing to file.")
 
     def handle_message(self, command: int, decoded_data: bytes) -> None:
         """Handle the return message. Calculate roundtrip time and store.
@@ -216,12 +222,13 @@ class LatencyTest:
     def execute_test(self) -> None:
         """Execute main test function."""
         if self.ser is None:
-            print("No serial port found. Quitting test.")
+            logger.info("No serial port found. Quitting test.")
             return
 
         try:
-            print(
-                f"Waiting to start test for {DEFAULT_WAIT_TIME} seconds (press CTRL+C to interrupt test)...",
+            logger.info(
+                "Waiting to start test for %s seconds (press CTRL+C to interrupt test)...",
+                DEFAULT_WAIT_TIME,
             )
             time.sleep(DEFAULT_WAIT_TIME)
 
@@ -231,6 +238,6 @@ class LatencyTest:
             # Run the test with jitter
             self.main_test(jitter=True)
 
-            print("Test ended")
+            logger.info("Test ended")
         except KeyboardInterrupt:
-            print("Test interrupted by user")
+            logger.info("Test interrupted by user")

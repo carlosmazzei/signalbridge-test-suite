@@ -1,11 +1,17 @@
-from logger import Logger
+import logging
+
+from logger_config import setup_logging
 from serial_interface import SerialCommand, SerialInterface
+
+setup_logging()
+
+logger = logging.getLogger(__name__)
 
 
 class RegressionTest:
     """Regression test class."""
 
-    def __init__(self, ser: SerialInterface, logger: Logger):
+    def __init__(self, ser: SerialInterface):
         """Initialize Latency Test Class."""
         self.logger = logger
         self.ser = ser
@@ -20,19 +26,23 @@ class RegressionTest:
         if command == SerialCommand.ECHO_COMMAND.value:
             try:
                 if decoded_data == bytes([0x00, 0x34, 0x02, 0x01, 0x02]):
-                    self.logger.display_log("[OK] Echo command")
+                    logger.info("[OK] Echo command")
                 else:
-                    self.logger.display_log("[FAIL] Echo command")
+                    logger.info("[FAIL] Echo command")
 
-                self.logger.display_log(
-                    f"Expected: {bytes([0x00, 0x34, 0x02, 0x01, 0x02])}",
+                logger.info(
+                    "Expected: %s",
+                    bytes([0x00, 0x34, 0x02, 0x01, 0x02]),
                 )
-                self.logger.display_log(
-                    f"Received: {byte_string}, command: {command}, decoded: {decoded_data}",
+                logger.info(
+                    "Received: %s, command: %s, decoded: %s",
+                    byte_string,
+                    command,
+                    decoded_data,
                 )
-                self.logger.display_log("Test ended")
+                logger.info("Test ended")
             except IndexError:
-                self.logger.display_log("Invalid message (Index Error)")
+                logger.exception("Invalid message (Index Error)")
                 return
 
     def test_echo_command(self) -> None:
