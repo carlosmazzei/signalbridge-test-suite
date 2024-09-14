@@ -141,7 +141,7 @@ class LatencyTest:
 
         Returns:
         -------
-            Dict[str, Any]: A dictionary containing test results.
+            dict[str, Any]: A dictionary containing test results.
 
         """
         dropped_messages = samples - len(self.latency_results)
@@ -191,7 +191,7 @@ class LatencyTest:
         Args:
         ----
             file_path (Path): The path to the output file.
-            output_data (List[Dict[str, Any]]): The data to write to the file.
+            output_data (list[dict[str, Any]]): The data to write to the file.
 
         """
         try:
@@ -215,7 +215,7 @@ class LatencyTest:
                 counter = decoded_data[5]
                 latency = time.time() - self.latency_message[counter]
                 self.latency_results.append(latency)
-                logger.info("Message %d latency: %d ms", counter, latency * 1e3)
+                logger.info("Message %.5f latency: %.5f ms", counter, latency * 1e3)
             except IndexError:
                 logger.info("Invalid message (Index Error)")
 
