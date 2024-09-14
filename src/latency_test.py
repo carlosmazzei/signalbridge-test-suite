@@ -197,7 +197,7 @@ class LatencyTest:
         try:
             with file_path.open("w", encoding="utf-8") as output_file:
                 json.dump(output_data, output_file, indent=4)
-                print(f"Test results written to {file_path}")
+                logger.info("Test results written to %s", file_path)
         except OSError:
             logger.exception("Error writing to file.")
 
@@ -215,9 +215,9 @@ class LatencyTest:
                 counter = decoded_data[5]
                 latency = time.time() - self.latency_message[counter]
                 self.latency_results.append(latency)
-                print(f"Message {counter} latency: {latency * 1e3} ms")
+                logger.info("Message %d latency: %d ms", counter, latency * 1e3)
             except IndexError:
-                print("Invalid message (Index Error)")
+                logger.info("Invalid message (Index Error)")
 
     def execute_test(self) -> None:
         """Execute main test function."""
