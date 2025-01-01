@@ -1,3 +1,5 @@
+"""Latency Test Module."""
+
 import datetime
 import json
 import logging
@@ -8,14 +10,16 @@ from typing import Any
 
 import numpy as np
 from alive_progress import alive_bar
+
+from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
 from serial_interface import SerialCommand, SerialInterface
 
 MAX_SAMPLE_SIZE = 255
 HEADER_BYTES = bytes([0x00, 0x34, 0x03, 0x01, 0x02])
-DEFAULT_WAIT_TIME = 5
+DEFAULT_WAIT_TIME = 3
 DEFAULT_NUM_TIMES = 5
-DEFAULT_MAX_WAIT = 0.3
+DEFAULT_MAX_WAIT = 0.1
 DEFAULT_MIN_WAIT = 0
 DEFAULT_SAMPLES = 255
 
@@ -28,8 +32,9 @@ logger = logging.getLogger(__name__)
 class LatencyTest:
     """Latency test class. Implement a roundtrip message to measure timing."""
 
-    def __init__(self, ser: SerialInterface):
-        """Initialize Latency Test Class.
+    def __init__(self, ser: SerialInterface) -> None:
+        """
+        Initialize Latency Test Class.
 
         Args:
         ----
@@ -43,7 +48,8 @@ class LatencyTest:
         self.latency_results: list[float] = []
 
     def publish(self, iteration_counter: int) -> None:
-        """Send messages.
+        """
+        Send messages.
 
         Args:
         ----
@@ -58,7 +64,7 @@ class LatencyTest:
         self.ser.write(payload)
         logger.info("Published (encoded) `%s`, counter %s", payload, iteration_counter)
 
-    def main_test(  # noqa: PLR0913
+    def main_test(
         self,
         num_times: int = DEFAULT_NUM_TIMES,
         max_wait: float = DEFAULT_MAX_WAIT,
@@ -67,7 +73,8 @@ class LatencyTest:
         *,
         jitter: bool = False,
     ) -> None:
-        """Execute the main test given the desired parameters.
+        """
+        Execute the main test given the desired parameters.
 
         Args:
         ----
@@ -89,7 +96,7 @@ class LatencyTest:
         current_datetime = datetime.datetime.now(tz=datetime.UTC)
         formatted_datetime = current_datetime.strftime("%Y%m%d_%H%M%S")
         output_filename = f"{formatted_datetime}_output.json"
-        file_path = Path(__file__).parent.parent / "tests" / output_filename
+        file_path = Path(__file__).parent.parent / TEST_RESULTS_FOLDER / output_filename
 
         output_data: list[dict[str, Any]] = []
         latency_results_copy: list[list[float]] = [[] for _ in range(num_times)]
@@ -131,7 +138,8 @@ class LatencyTest:
         samples: int,
         waiting_time: float,
     ) -> dict[str, Any]:
-        """Calculate test results including latency statistics and dropped messages.
+        """
+        Calculate test results including latency statistics and dropped messages.
 
         Args:
         ----
@@ -186,7 +194,8 @@ class LatencyTest:
         file_path: Path,
         output_data: list[dict[str, Any]],
     ) -> None:
-        """Write test output data to a JSON file.
+        """
+        Write test output data to a JSON file.
 
         Args:
         ----
@@ -202,7 +211,8 @@ class LatencyTest:
             logger.exception("Error writing to file.")
 
     def handle_message(self, command: int, decoded_data: bytes) -> None:
-        """Handle the return message. Calculate roundtrip time and store.
+        """
+        Handle the return message. Calculate roundtrip time and store.
 
         Args:
         ----
@@ -227,7 +237,8 @@ class LatencyTest:
 
         try:
             logger.info(
-                "Waiting to start test for %s seconds (press CTRL+C to interrupt test)...",
+                "Waiting to start test for %s \
+                    seconds (press CTRL+C to interrupt test)...",
                 DEFAULT_WAIT_TIME,
             )
             time.sleep(DEFAULT_WAIT_TIME)

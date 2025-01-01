@@ -1,3 +1,5 @@
+"""Application Manager module."""
+
 import logging
 import os
 from enum import Enum
@@ -28,14 +30,16 @@ class Mode(Enum):
 
 
 class ApplicationManager:
-    """Application Manager class.
+    """
+    Application Manager class.
 
     This class manages the overall application flow, including initialization,
     mode switching, and cleanup.
     """
 
-    def __init__(self, port: str, baudrate: int, timeout: float):
-        """Initialize the application manager.
+    def __init__(self, port: str, baudrate: int, timeout: float) -> None:
+        """
+        Initialize the application manager.
 
         Args:
         ----
@@ -58,7 +62,8 @@ class ApplicationManager:
         self.visualize_results: VisualizeResults | None = None
 
     def initialize(self) -> bool:
-        """Initialize serial interface and set up components.
+        """
+        Initialize serial interface and set up components.
 
         Returns
         -------
@@ -85,7 +90,8 @@ class ApplicationManager:
         decoded_data: bytes,
         byte_string: bytes,
     ) -> None:
-        """Handle incoming messages based on the current mode.
+        """
+        Handle incoming messages based on the current mode.
 
         Args:
         ----
@@ -157,7 +163,8 @@ class ApplicationManager:
         print("5. Exit")
 
     def run(self) -> None:
-        """Run the main application loop.
+        """
+        Run the main application loop.
 
         This method displays the menu, handles user input, and executes
         the chosen option until the user decides to exit.

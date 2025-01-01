@@ -1,3 +1,5 @@
+"""Main module for the application."""
+
 import os
 
 from application_manager import ApplicationManager

@@ -1,4 +1,5 @@
-# logger_config.py
+"""Module to setup logging configuration from file."""
+
 import logging
 import logging.config
 import os

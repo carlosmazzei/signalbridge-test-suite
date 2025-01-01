@@ -1,3 +1,5 @@
+"""Custom input function to handle input in a thread-safe manner."""
+
 import sys
 import threading
 

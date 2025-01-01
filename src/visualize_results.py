@@ -1,9 +1,13 @@
+"""Module to visualize the test results."""
+
 import json
 import logging
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
 
 setup_logging()
@@ -16,7 +20,7 @@ class VisualizeResults:
 
     def select_test_file(self) -> Path | None:
         """Select a test file from the tests folder."""
-        tests_folder: Path = Path(__file__).parent.parent / "tests"
+        tests_folder: Path = Path(__file__).parent.parent / TEST_RESULTS_FOLDER
         files: list[Path] = sorted(tests_folder.glob("*.json"))
         if not files:
             logger.info("No test files found in the tests folder.")
