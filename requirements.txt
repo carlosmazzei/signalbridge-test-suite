@@ -1,4 +1,5 @@
 cobs==1.2.0
 pyserial==3.5
 alive-progress==3.1.5
+ruff==0.8.4
 pre-commit==4.0.1
