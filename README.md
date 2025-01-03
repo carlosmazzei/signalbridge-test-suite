@@ -2,25 +2,6 @@
 
 This project includes UART testing tools for the simulator interface, featuring a latency test and a simple interface to send commands.
 
-## Project Structure
-
-```shell
-project_root/
-│
-├── src/
-│   ├── latency_test.py
-│   ├── serial_interface.py
-│   ├── application_manager.py
-│   ├── logger.py
-│   └── checksum.py
-│
-├── tests/
-│   └── regression_tests.py
-│
-├── requirements.txt
-└── README.md
-```
-
 ## Features
 
 - UART Latency test for ESP32 and CP2102

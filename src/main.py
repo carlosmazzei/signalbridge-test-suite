@@ -1,14 +1,17 @@
 """Main module for the application."""
 
+import logging
 import os
 
-from application_manager import ApplicationManager
+import application_manager
+from const import BAUDRATE, PORT_NAME, TIMEOUT
+
+logger = logging.getLogger(__name__)
 
 
 def main() -> None:
     """Execute main loop."""
-    port = "/dev/cu.usbmodem1234561"
-    app_manager = ApplicationManager(port, 115200, 0.1)
+    app_manager = application_manager.ApplicationManager(PORT_NAME, BAUDRATE, TIMEOUT)
 
     os.system("clear")  # noqa: S605, S607
     app_manager.initialize()

@@ -4,11 +4,14 @@
 
 # Remove test results folder
 /test_results
+/tests/coverage
+/tests/coverage.xml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+.ruff_cache/
 
 # C extensions
 *.so

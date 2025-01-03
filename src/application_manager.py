@@ -82,6 +82,7 @@ class ApplicationManager:
             logger.error(
                 "Failed to open serial interface. Some features will be disabled.",
             )
+            return False
         return True
 
     def handle_message(
@@ -188,7 +189,10 @@ class ApplicationManager:
                     break
                 else:
                     logger.info("Invalid choice or option not available\n")
+        except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt received, exiting gracefully.")
         except Exception:
             logger.exception("Exception in main loop.")
+            raise
         finally:
             self.cleanup()
