@@ -6,6 +6,7 @@
 /test_results
 /tests/coverage
 /tests/coverage.xml
+mutants/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
