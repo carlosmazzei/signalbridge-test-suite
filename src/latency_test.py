@@ -123,6 +123,7 @@ class LatencyTest:
                     test=j,
                     samples=samples,
                     waiting_time=waiting_time,
+                    jitter=jitter,
                 )
                 latency_results_copy[j] = self.latency_results.copy()
                 output_data.append({**test_results, "results": latency_results_copy[j]})
@@ -133,10 +134,7 @@ class LatencyTest:
         self._write_output_to_file(file_path, output_data)
 
     def _calculate_test_results(
-        self,
-        test: int,
-        samples: int,
-        waiting_time: float,
+        self, test: int, samples: int, waiting_time: float, *, jitter: bool = False
     ) -> dict[str, Any]:
         """
         Calculate test results including latency statistics and dropped messages.
@@ -146,6 +144,7 @@ class LatencyTest:
             test (int): Number of the test
             samples (int): Number of samples in the test.
             waiting_time (float): Waiting time between messages.
+            jitter (bool): Whether to add jitter to wait times.
 
         Returns:
         -------
@@ -165,6 +164,7 @@ class LatencyTest:
                 "latency_min": 0,
                 "latency_max": 0,
                 "latency_p95": 0,
+                "jitter": jitter,
                 "dropped_messages": dropped_messages,
             }
 
@@ -186,6 +186,7 @@ class LatencyTest:
             "latency_min": latency_min,
             "latency_max": latency_max,
             "latency_p95": latency_p95,
+            "jitter": jitter,
             "dropped_messages": dropped_messages,
         }
 

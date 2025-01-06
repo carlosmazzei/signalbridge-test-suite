@@ -20,8 +20,7 @@ class VisualizeResults:
 
     def select_test_file(self) -> Path | None:
         """Select a test file from the tests folder."""
-        tests_folder: Path = Path(__file__).parent.parent / TEST_RESULTS_FOLDER
-        files: list[Path] = sorted(tests_folder.glob("*.json"))
+        files = self._get_test_files()
         if not files:
             logger.info("No test files found in the tests folder.")
             return None
@@ -30,34 +29,76 @@ class VisualizeResults:
         current_page: int = 0
 
         while True:
-            start_idx: int = current_page * page_size
-            end_idx: int = start_idx + page_size
-            page_files: list[Path] = files[start_idx:end_idx]
+            page_files = self._get_page_files(files, current_page, page_size)
+            self._display_page(page_files, current_page, len(files), page_size)
 
-            print("\nTest files:")
-            for idx, file in enumerate(page_files, start=1):
-                print(f"{idx}. {file.name}")
+            choice = input("\nEnter your choice (number, n, p, or q): ").lower()
+            result = self._handle_choice(
+                choice, page_files, current_page, files, page_size
+            )
 
-            print("\nOptions:")
-            print("n - Next page")
-            print("p - Previous page")
-            print("q - Return to main menu")
-
-            choice = input("Enter your choice (number, n, p, or q): ").lower()
-
-            if choice == "n" and end_idx < len(files):
-                current_page += 1
-            elif choice == "p" and current_page > 0:
-                current_page -= 1
-            elif choice == "q":
+            if isinstance(result, Path):
+                return result
+            if result is None:
                 return None
-            elif choice.isdigit():
-                idx = int(choice) - 1
-                if 0 <= idx < len(page_files):
-                    return page_files[idx]
-                logger.info("Invalid file number. Please try again.")
-            else:
-                logger.info("Invalid input. Please try again.")
+            current_page = result
+
+    def _get_test_files(self) -> list[Path]:
+        """Get sorted list of test files from the tests folder."""
+        tests_folder: Path = Path(__file__).parent.parent / TEST_RESULTS_FOLDER
+        return sorted(tests_folder.glob("*.json"))
+
+    def _get_page_files(
+        self, files: list[Path], current_page: int, page_size: int
+    ) -> list[Path]:
+        """Get files for the current page."""
+        start_idx: int = current_page * page_size
+        end_idx: int = start_idx + page_size
+        return files[start_idx:end_idx]
+
+    def _display_page(
+        self,
+        page_files: list[Path],
+        current_page: int,
+        total_files: int,
+        page_size: int,
+    ) -> None:
+        """Display the current page of files and options."""
+        print("\nTest files:")
+        for idx, file in enumerate(page_files, start=1):
+            print(f"{idx}. {file.name}")
+
+        print("\nOptions:")
+        if (current_page + 1) * page_size < total_files:
+            print("n - Next page")
+        if current_page > 0:
+            print("p - Previous page")
+        print("q - Return to main menu")
+        print(f"(Page {current_page + 1} of {total_files // page_size + 1})")
+
+    def _handle_choice(
+        self,
+        choice: str,
+        page_files: list[Path],
+        current_page: int,
+        files: list[Path],
+        page_size: int,
+    ) -> Path | int | None:
+        """Handle user input choice and return appropriate result."""
+        if choice == "n" and (current_page + 1) * page_size < len(files):
+            return current_page + 1
+        if choice == "p" and current_page > 0:
+            return current_page - 1
+        if choice == "q":
+            return None
+        if choice.isdigit():
+            idx = int(choice) - 1
+            if 0 <= idx < len(page_files):
+                return page_files[idx]
+            logger.info("Invalid file number. Please try again.")
+        else:
+            logger.info("Invalid input. Please try again.")
+        return current_page
 
     def load_and_process_data(
         self,
@@ -122,7 +163,7 @@ class VisualizeResults:
             )
 
             # Boxplot
-            ax1.boxplot(test_data, labels=labels, showmeans=True)
+            ax1.boxplot(test_data, tick_labels=labels, showmeans=True)
             ax1.set_title(f"Latency Percentiles (Samples = {samples})")
             ax1.set_xlabel("Test cases / waiting time in ms")
             ax1.set_ylabel("Latency (ms)")
