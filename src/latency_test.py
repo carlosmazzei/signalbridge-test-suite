@@ -109,6 +109,7 @@ class LatencyTest:
                 print(f"Test {j}, waiting time: {waiting_time} s")
                 random_max = (max_wait - min_wait) * 0.2
 
+                burst_init_time = time.time()
                 for i in range(samples):
                     self.publish(i)
                     if jitter:
@@ -119,10 +120,15 @@ class LatencyTest:
                         time.sleep(waiting_time)
                     pbar()
 
+                burst_elapsed_time = time.time() - burst_init_time
+                # Calculated bitrate considering the total payload (HEADER_BYTES + 1)
+                bitrate = (samples * 8 * (len(HEADER_BYTES) + 1)) / burst_elapsed_time
+
                 test_results = self._calculate_test_results(
                     test=j,
                     samples=samples,
                     waiting_time=waiting_time,
+                    bitrate=bitrate,
                     jitter=jitter,
                 )
                 latency_results_copy[j] = self.latency_results.copy()
@@ -134,7 +140,13 @@ class LatencyTest:
         self._write_output_to_file(file_path, output_data)
 
     def _calculate_test_results(
-        self, test: int, samples: int, waiting_time: float, *, jitter: bool = False
+        self,
+        test: int,
+        samples: int,
+        waiting_time: float,
+        bitrate: float,
+        *,
+        jitter: bool = False,
     ) -> dict[str, Any]:
         """
         Calculate test results including latency statistics and dropped messages.
@@ -144,6 +156,7 @@ class LatencyTest:
             test (int): Number of the test
             samples (int): Number of samples in the test.
             waiting_time (float): Waiting time between messages.
+            bitrate (float): Average bitrate of each burst of samples.
             jitter (bool): Whether to add jitter to wait times.
 
         Returns:
@@ -165,6 +178,7 @@ class LatencyTest:
                 "latency_max": 0,
                 "latency_p95": 0,
                 "jitter": jitter,
+                "bitrate": bitrate,
                 "dropped_messages": dropped_messages,
             }
 
@@ -177,6 +191,7 @@ class LatencyTest:
         print(f"Minimum latency: {latency_min * 1e3} ms")
         print(f"Maximum latency: {latency_max * 1e3} ms")
         print(f"P95 latency: {latency_p95 * 1e3} ms")
+        print(f"Average bitrate: {bitrate}")
 
         return {
             "test": test,
@@ -187,6 +202,7 @@ class LatencyTest:
             "latency_max": latency_max,
             "latency_p95": latency_p95,
             "jitter": jitter,
+            "bitrate": bitrate,
             "dropped_messages": dropped_messages,
         }
 
@@ -230,6 +246,23 @@ class LatencyTest:
             except IndexError:
                 logger.info("Invalid message (Index Error)")
 
+    def _get_user_input(self, prompt: str, default_value: Any) -> Any:
+        """
+        Get user input with default value.
+
+        Args:
+        ----
+            prompt (str): The prompt to display.
+            default_value (Any): The default value to use.
+
+        """
+        user_input = input(f"{prompt} (Press Enter to use default: {default_value}): ")
+        return (
+            default_value
+            if user_input.strip() == ""
+            else type(default_value)(user_input)
+        )
+
     def execute_test(self) -> None:
         """Execute main test function."""
         if self.ser is None:
@@ -237,12 +270,45 @@ class LatencyTest:
             return
 
         try:
+            with alive_bar(4) as progress_bar:
+                # Get parameters via user input
+                jitter = self._get_user_input(
+                    "Run test with jitter? (True/False)",
+                    False,  # noqa: FBT003
+                )
+                num_times = self._get_user_input(
+                    "Enter number of times", DEFAULT_NUM_TIMES
+                )
+                min_wait = self._get_user_input(
+                    "Enter min time to wait (ms)", DEFAULT_MIN_WAIT
+                )
+                max_wait = self._get_user_input(
+                    "Enter max time to wait (ms)", DEFAULT_MAX_WAIT
+                )
+                num_samples = self._get_user_input(
+                    "Enter number of samples", DEFAULT_SAMPLES
+                )
+                wait_time = self._get_user_input(
+                    "Enter wait time (s)", DEFAULT_WAIT_TIME
+                )
+
+                # Run the test with user-defined parameters
+                self.main_test(
+                    num_times=num_times,
+                    max_wait=max_wait,
+                    min_wait=min_wait,
+                    samples=num_samples,
+                    jitter=jitter,
+                )
+
+                progress_bar()
+
             logger.info(
                 "Waiting to start test for %s \
                     seconds (press CTRL+C to interrupt test)...",
-                DEFAULT_WAIT_TIME,
+                wait_time,
             )
-            time.sleep(DEFAULT_WAIT_TIME)
+            time.sleep(wait_time)
 
             # Run the test without jitter
             self.main_test(jitter=False)
