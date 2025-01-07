@@ -46,6 +46,8 @@ def test_load_and_process_data_valid(visualize_results: VisualizeResults) -> Non
             "latency_max": 0.1,
             "latency_p95": 0.09,
             "dropped_messages": 0,
+            "bitrate": 100.365,
+            "jitter": False,
             "results": [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1],
         }
     ]
@@ -53,7 +55,7 @@ def test_load_and_process_data_valid(visualize_results: VisualizeResults) -> Non
         result = visualize_results.load_and_process_data(Path("test.json"))
         assert result is not None
         labels, test_data, stats_data, samples, jitter = result
-        assert labels == ["t: test1\nw.time:\n100"]
+        assert labels == ["t: test1\nw.time:\n100\nbitrate: 100"]
         assert len(test_data) == 1
         assert len(stats_data) == 1
         assert samples == 10  # noqa: PLR2004
