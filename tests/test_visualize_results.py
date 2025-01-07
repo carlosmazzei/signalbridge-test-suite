@@ -52,11 +52,12 @@ def test_load_and_process_data_valid(visualize_results: VisualizeResults) -> Non
     with patch("pathlib.Path.open", mock_open(read_data=json.dumps(mock_data))):
         result = visualize_results.load_and_process_data(Path("test.json"))
         assert result is not None
-        labels, test_data, stats_data, samples = result
+        labels, test_data, stats_data, samples, jitter = result
         assert labels == ["t: test1\nw.time:\n100"]
         assert len(test_data) == 1
         assert len(stats_data) == 1
         assert samples == 10  # noqa: PLR2004
+        assert jitter is False
 
 
 def test_load_and_process_data_invalid(visualize_results: VisualizeResults) -> None:
@@ -74,8 +75,9 @@ def test_plot_data(visualize_results: VisualizeResults) -> None:
         {"avg": 0.02, "min": 0.01, "max": 0.03, "p95": 0.03, "dropped_messages": 0}
     ]
     samples = 3
+    jitter = False
     with patch("matplotlib.pyplot.show") as mock_show:
-        visualize_results.plot_data(labels, test_data, stats_data, samples)
+        visualize_results.plot_data(labels, test_data, stats_data, samples, jitter)
         mock_show.assert_called_once()
 
 

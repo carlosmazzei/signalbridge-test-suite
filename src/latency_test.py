@@ -270,7 +270,7 @@ class LatencyTest:
             return
 
         try:
-            with alive_bar(4) as progress_bar:
+            with alive_bar(6) as progress_bar:
                 # Get parameters via user input
                 jitter = self._get_user_input(
                     "Run test with jitter? (True/False)",
@@ -291,30 +291,23 @@ class LatencyTest:
                 wait_time = self._get_user_input(
                     "Enter wait time (s)", DEFAULT_WAIT_TIME
                 )
-
-                # Run the test with user-defined parameters
-                self.main_test(
-                    num_times=num_times,
-                    max_wait=max_wait,
-                    min_wait=min_wait,
-                    samples=num_samples,
-                    jitter=jitter,
-                )
-
                 progress_bar()
 
             logger.info(
                 "Waiting to start test for %s \
-                    seconds (press CTRL+C to interrupt test)...",
+                seconds (press CTRL+C to interrupt test)...",
                 wait_time,
             )
             time.sleep(wait_time)
 
-            # Run the test without jitter
-            self.main_test(jitter=False)
-
-            # Run the test with jitter
-            self.main_test(jitter=True)
+            # Run the test with user-defined parameters
+            self.main_test(
+                num_times=num_times,
+                max_wait=max_wait,
+                min_wait=min_wait,
+                samples=num_samples,
+                jitter=jitter,
+            )
 
             logger.info("Test ended")
         except KeyboardInterrupt:

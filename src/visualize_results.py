@@ -103,7 +103,7 @@ class VisualizeResults:
     def load_and_process_data(
         self,
         file_path: Path,
-    ) -> tuple[list[str], list[np.ndarray], list[dict[str, float]], int] | None:
+    ) -> tuple[list[str], list[np.ndarray], list[dict[str, float]], int, bool] | None:
         """Load and process data from the JSON file."""
         try:
             with file_path.open() as f:
@@ -117,11 +117,16 @@ class VisualizeResults:
             test_data = []
             stats_data = []
             samples = 0
+            jitter = False
 
             for series in data:
                 series_data = np.array(series["results"]) * 1000
                 waiting_time = format(series["waiting_time"] * 1000, ".0f")
-                series_name = f"t: {series['test']}\nw.time:\n{waiting_time}"
+                bitrate = format(series["bitrate"], ".0f")
+                jitter = series["jitter"]
+                series_name = (
+                    f"t: {series['test']}\nw.time:\n{waiting_time}\nbitrate: {bitrate}"
+                )
                 samples += series["samples"]
                 labels.append(series_name)
                 test_data.append(series_data)
@@ -132,6 +137,7 @@ class VisualizeResults:
                         "min": series["latency_min"] * 1000,
                         "max": series["latency_max"] * 1000,
                         "p95": series["latency_p95"] * 1000,
+                        "bitrate": series["bitrate"],
                         "dropped_messages": series["dropped_messages"],
                     },
                 )
@@ -144,7 +150,7 @@ class VisualizeResults:
             logger.exception("Error processing file %s", file_path)
             return None
         else:
-            return labels, test_data, stats_data, samples
+            return labels, test_data, stats_data, samples, jitter
 
     def plot_data(
         self,
@@ -152,27 +158,30 @@ class VisualizeResults:
         test_data: list[np.ndarray],
         stats_data: list[dict[str, float]],
         samples: int,
+        jitter: bool,  # noqa: FBT001
     ) -> None:
         """Plot the processed data."""
         try:
-            _, (ax1, ax2) = plt.subplots(
+            fig, (ax1, ax2) = plt.subplots(
                 2,
                 1,
-                figsize=(12, 10),
+                figsize=(10, 8),
                 gridspec_kw={"height_ratios": [2, 1]},
+                sharex=True,
             )
 
+            fig.suptitle(f"Test Results Visualization (jitter = {jitter})", fontsize=12)
+
             # Boxplot
-            ax1.boxplot(test_data, tick_labels=labels, showmeans=True)
-            ax1.set_title(f"Latency Percentiles (Samples = {samples})")
-            ax1.set_xlabel("Test cases / waiting time in ms")
+            ax1.boxplot(test_data, showmeans=True)
+            ax1.set_title(f"Latency Percentiles (Samples = {samples})", fontsize=10)
             ax1.set_ylabel("Latency (ms)")
             ax1.set_yscale("log")
             ax1.grid(axis="y", linestyle="--", alpha=0.7)
             plt.setp(ax1.get_xticklabels(), rotation=45, ha="right")
 
             # Statistics subplot
-            x = np.arange(len(labels))
+            x = np.arange(len(labels)) + 1
             width = 0.1
 
             ax2.bar(
@@ -212,9 +221,9 @@ class VisualizeResults:
             )
 
             ax2.set_ylabel("Latency (ms)")
-            ax2.set_title("Latency Statistics")
+            ax2.set_title("Latency Statistics", fontsize=10)
             ax2.set_xticks(x)
-            ax2.set_xticklabels(labels)
+            ax2.set_xticklabels(labels, fontsize=8)
             ax2.set_yscale("log")
             ax2.legend()
             ax2.grid(axis="y", linestyle="--", alpha=0.7)
@@ -236,8 +245,8 @@ class VisualizeResults:
         if processed_data is None:
             return
 
-        labels, test_data, stats_data, samples = processed_data
-        self.plot_data(labels, test_data, stats_data, samples)
+        labels, test_data, stats_data, samples, jitter = processed_data
+        self.plot_data(labels, test_data, stats_data, samples, jitter)
 
     def execute_visualization(self) -> None:
         """Execute visualization."""
