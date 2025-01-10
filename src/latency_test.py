@@ -15,12 +15,13 @@ from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
 from serial_interface import SerialCommand, SerialInterface
 
-MAX_SAMPLE_SIZE = 255
-HEADER_BYTES = bytes([0x00, 0x34, 0x03, 0x01, 0x02])
+MAX_SAMPLE_SIZE = 65536  # 2 bytes counter
+HEADER_BYTES = bytes([0x00, 0x34])
 DEFAULT_WAIT_TIME = 3
 DEFAULT_NUM_TIMES = 5
 DEFAULT_MAX_WAIT = 0.1
 DEFAULT_MIN_WAIT = 0
+DEFAULT_MESSAGE_LENGTH = 10  # from 6 to 10
 DEFAULT_SAMPLES = 255
 
 
@@ -47,29 +48,33 @@ class LatencyTest:
         self.latency_message: list[float] = [0.0] * MAX_SAMPLE_SIZE
         self.latency_results: list[float] = []
 
-    def publish(self, iteration_counter: int) -> None:
+    def publish(self, iteration_counter: int, message_length: int) -> None:
         """
         Send messages.
 
         Args:
         ----
             iteration_counter (int): The current iteration count.
+            message_length (int): The total length of the message to send
 
         """
-        counter = iteration_counter.to_bytes(1, byteorder="big")
-        payload = HEADER_BYTES + counter
+        counter = iteration_counter.to_bytes(2, byteorder="big")
+        # Build a byte stream for trailer with a specified length
+        trailer = bytes([0x02] * (message_length - len(HEADER_BYTES) - 3))
+        m_length = (len(trailer) + 2).to_bytes(1, byteorder="big")
+        payload = HEADER_BYTES + m_length + counter + trailer
 
-        start_time = time.time()
-        self.latency_message[iteration_counter] = start_time
+        self.latency_message[iteration_counter] = time.perf_counter()
         self.ser.write(payload)
         logger.info("Published (encoded) `%s`, counter %s", payload, iteration_counter)
 
-    def main_test(
+    def main_test(  # noqa: PLR0913
         self,
         num_times: int = DEFAULT_NUM_TIMES,
         max_wait: float = DEFAULT_MAX_WAIT,
         min_wait: float = DEFAULT_MIN_WAIT,
         samples: int = DEFAULT_SAMPLES,
+        length: int = DEFAULT_MESSAGE_LENGTH,
         *,
         jitter: bool = False,
     ) -> None:
@@ -82,6 +87,7 @@ class LatencyTest:
             max_wait (float): Maximum wait time between messages.
             min_wait (float): Minimum wait time between messages.
             samples (int): Number of samples per test.
+            length (int): Length of the message to send.
             jitter (bool): Whether to add jitter to wait times.
 
         Raises:
@@ -89,10 +95,6 @@ class LatencyTest:
             ValueError: If samples exceed MAX_SAMPLE_SIZE.
 
         """
-        if samples > MAX_SAMPLE_SIZE:
-            msg = f"Samples must be less than or equal to {MAX_SAMPLE_SIZE}"
-            raise ValueError(msg)
-
         current_datetime = datetime.datetime.now(tz=datetime.UTC)
         formatted_datetime = current_datetime.strftime("%Y%m%d_%H%M%S")
         output_filename = f"{formatted_datetime}_output.json"
@@ -109,9 +111,9 @@ class LatencyTest:
                 print(f"Test {j}, waiting time: {waiting_time} s")
                 random_max = (max_wait - min_wait) * 0.2
 
-                burst_init_time = time.time()
+                burst_init_time = time.perf_counter()
                 for i in range(samples):
-                    self.publish(i)
+                    self.publish(i, length)
                     if jitter:
                         time.sleep(
                             waiting_time + random.uniform(0, random_max),  # noqa: S311
@@ -120,7 +122,7 @@ class LatencyTest:
                         time.sleep(waiting_time)
                     pbar()
 
-                burst_elapsed_time = time.time() - burst_init_time
+                burst_elapsed_time = time.perf_counter() - burst_init_time
                 # Calculated bitrate considering the total payload (HEADER_BYTES + 1)
                 bitrate = (samples * 8 * (len(HEADER_BYTES) + 1)) / burst_elapsed_time
 
@@ -239,8 +241,9 @@ class LatencyTest:
         """
         if command == SerialCommand.ECHO_COMMAND.value:
             try:
-                counter = decoded_data[5]
-                latency = time.time() - self.latency_message[counter]
+                counter_bytes = [decoded_data[3], decoded_data[4]]
+                counter = int.from_bytes(counter_bytes, byteorder="big")
+                latency = time.perf_counter() - self.latency_message[counter]
                 self.latency_results.append(latency)
                 logger.info("Message %.5f latency: %.5f ms", counter, latency * 1e3)
             except IndexError:
@@ -263,6 +266,77 @@ class LatencyTest:
             else type(default_value)(user_input)
         )
 
+    def _show_options(self) -> tuple[int, float, float, int, int, bool, int]:
+        """
+        Show options to user and get input.
+
+        Returns
+        -------
+            tuple[int, float, float, int, int, bool]: The user input values.
+
+        """
+        num_times = self._get_user_input(
+            "(1/6) Enter number of times", DEFAULT_NUM_TIMES
+        )
+        if num_times <= 0:
+            num_times = DEFAULT_NUM_TIMES
+            logger.info("Invalid number of times. Using default value.")
+
+        min_wait = self._get_user_input(
+            "(2/6) Enter min time to wait (ms)", DEFAULT_MIN_WAIT * 1000
+        )
+        if min_wait < 0:
+            min_wait = DEFAULT_MIN_WAIT
+            logger.info("Invalid min wait time. Using default value.")
+        else:
+            min_wait /= 1000
+
+        max_wait = self._get_user_input(
+            "(3/6) Enter max time to wait (ms)", DEFAULT_MAX_WAIT * 1000
+        )
+        if max_wait < 0:
+            max_wait = DEFAULT_MAX_WAIT
+            logger.info("Invalid max wait time. Using default value.")
+        else:
+            max_wait /= 1000
+
+        num_samples = self._get_user_input(
+            "(4/6) Enter number of samples", DEFAULT_SAMPLES
+        )
+        if num_samples <= 0 and num_samples < MAX_SAMPLE_SIZE:
+            num_samples = DEFAULT_SAMPLES
+            logger.info("Invalid number of samples. Using default value.")
+
+        wait_time = self._get_user_input("Enter wait time (s)", DEFAULT_WAIT_TIME)
+        if wait_time < 0:
+            wait_time = DEFAULT_WAIT_TIME
+            logger.info("Invalid wait time. Using default value.")
+
+        jitter = self._get_user_input(
+            "(5/6) Run test with jitter? (True/False)",
+            False,  # noqa: FBT003
+        )
+        if not isinstance(jitter, bool):
+            jitter = False
+            logger.info("Invalid jitter value. Using default value.")
+
+        message_length = self._get_user_input(
+            "(6/6) Enter message length (min 6 to max 10)", DEFAULT_MESSAGE_LENGTH
+        )
+        if message_length < 6 or message_length > 10:  # noqa: PLR2004
+            message_length = DEFAULT_MESSAGE_LENGTH
+            logger.info("Invalid message length. Using default value.")
+
+        return (
+            num_times,
+            min_wait,
+            max_wait,
+            num_samples,
+            wait_time,
+            jitter,
+            message_length,
+        )
+
     def execute_test(self) -> None:
         """Execute main test function."""
         if self.ser is None:
@@ -270,34 +344,15 @@ class LatencyTest:
             return
 
         try:
-            with alive_bar(6) as progress_bar:
-                # Get parameters via user input
-                jitter = self._get_user_input(
-                    "Run test with jitter? (True/False)",
-                    False,  # noqa: FBT003
-                )
-                num_times = self._get_user_input(
-                    "Enter number of times", DEFAULT_NUM_TIMES
-                )
-                min_wait = self._get_user_input(
-                    "Enter min time to wait (ms)", DEFAULT_MIN_WAIT
-                )
-                max_wait = self._get_user_input(
-                    "Enter max time to wait (ms)", DEFAULT_MAX_WAIT
-                )
-                num_samples = self._get_user_input(
-                    "Enter number of samples", DEFAULT_SAMPLES
-                )
-                wait_time = self._get_user_input(
-                    "Enter wait time (s)", DEFAULT_WAIT_TIME
-                )
-                progress_bar()
-
-            logger.info(
-                "Waiting to start test for %s \
-                seconds (press CTRL+C to interrupt test)...",
+            (
+                num_times,
+                min_wait,
+                max_wait,
+                num_samples,
                 wait_time,
-            )
+                jitter,
+                message_length,
+            ) = self._show_options()
             time.sleep(wait_time)
 
             # Run the test with user-defined parameters
@@ -307,6 +362,7 @@ class LatencyTest:
                 min_wait=min_wait,
                 samples=num_samples,
                 jitter=jitter,
+                length=message_length,
             )
 
             logger.info("Test ended")

@@ -173,12 +173,60 @@ class VisualizeResults:
             fig.suptitle(f"Test Results Visualization (jitter = {jitter})", fontsize=12)
 
             # Boxplot
-            ax1.boxplot(test_data, showmeans=True)
+            boxplot = ax1.boxplot(test_data, showmeans=True, patch_artist=True)
             ax1.set_title(f"Latency Percentiles (Samples = {samples})", fontsize=10)
             ax1.set_ylabel("Latency (ms)")
             ax1.set_yscale("log")
             ax1.grid(axis="y", linestyle="--", alpha=0.7)
             plt.setp(ax1.get_xticklabels(), rotation=45, ha="right")
+
+            # Add data labels to boxplot
+            for _, (line, stat) in enumerate(
+                zip(boxplot["medians"], stats_data, strict=True)
+            ):
+                x, y = line.get_xydata()[1]
+                bbox_props = {
+                    "boxstyle": "round,pad=0.3",
+                    "edgecolor": "black",
+                    "facecolor": "white",
+                    "alpha": 0.7,
+                }
+                ax1.text(
+                    x,
+                    y,
+                    f"Avg: {stat['avg']:.1f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    bbox=bbox_props,
+                )
+                ax1.text(
+                    x,
+                    stat["min"],
+                    f"Min: {stat['min']:.1f}",
+                    ha="center",
+                    va="top",
+                    fontsize=8,
+                    bbox=bbox_props,
+                )
+                ax1.text(
+                    x,
+                    stat["max"],
+                    f"Max: {stat['max']:.1f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    bbox=bbox_props,
+                )
+                ax1.text(
+                    x,
+                    stat["p95"],
+                    f"P95: {stat['p95']:.1f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    bbox=bbox_props,
+                )
 
             # Statistics subplot
             x = np.arange(len(labels)) + 1
