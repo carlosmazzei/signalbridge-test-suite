@@ -204,10 +204,10 @@ class VisualizeResults:
             ):
                 x = line.get_xydata()[1][0]
                 stats_text = (
-                    f'Avg: {stat["avg"]:.1f}\n'
-                    f'Min: {stat["min"]:.1f}\n'
-                    f'Max: {stat["max"]:.1f}\n'
-                    f'P95: {stat["p95"]:.1f}'
+                    f"Avg: {stat['avg']:.1f}\n"
+                    f"Min: {stat['min']:.1f}\n"
+                    f"Max: {stat['max']:.1f}\n"
+                    f"P95: {stat['p95']:.1f}"
                 )
 
                 # Posicionar texto à direita do boxplot
