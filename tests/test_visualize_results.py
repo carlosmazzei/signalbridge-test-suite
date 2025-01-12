@@ -136,3 +136,10 @@ def test_handle_choice_invalid_input(visualize_results: VisualizeResults) -> Non
     files = [Path(f"test_{i}.json") for i in range(5)]
     result = visualize_results._handle_choice("x", files, 0, files, 5)
     assert result == 0
+
+
+def test_get_total_pages(visualize_results: VisualizeResults) -> None:
+    """Test for the _get_total_pages method."""
+    files = [Path(f"test_{i}.json") for i in range(16)]
+    result = visualize_results._get_total_pages(len(files), 5)
+    assert result == 4  # noqa: PLR2004
