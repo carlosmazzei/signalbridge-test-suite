@@ -69,7 +69,7 @@ def test_load_and_process_data_invalid(visualize_results: VisualizeResults) -> N
         assert result is None
 
 
-def test_plot_data(visualize_results: VisualizeResults) -> None:
+def test_plot_boxplot(visualize_results: VisualizeResults) -> None:
     """Test for the plot_data method."""
     labels = ["Test 1"]
     test_data = [np.array([0.01, 0.02, 0.03])]
@@ -79,7 +79,7 @@ def test_plot_data(visualize_results: VisualizeResults) -> None:
     samples = 3
     jitter = False
     with patch("matplotlib.pyplot.show") as mock_show:
-        visualize_results.plot_data(labels, test_data, stats_data, samples, jitter)
+        visualize_results.plot_boxplot(labels, test_data, stats_data, samples, jitter)
         mock_show.assert_called_once()
 
 

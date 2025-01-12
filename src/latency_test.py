@@ -124,7 +124,7 @@ class LatencyTest:
 
                 burst_elapsed_time = time.perf_counter() - burst_init_time
                 # Calculated bitrate considering the total payload (HEADER_BYTES + 1)
-                bitrate = (samples * 8 * (len(HEADER_BYTES) + 1)) / burst_elapsed_time
+                bitrate = (samples * 8 * length) / burst_elapsed_time
 
                 test_results = self._calculate_test_results(
                     test=j,
@@ -353,6 +353,8 @@ class LatencyTest:
                 jitter,
                 message_length,
             ) = self._show_options()
+
+            print(f"Wait for {DEFAULT_WAIT_TIME}s and start test ...")
             time.sleep(wait_time)
 
             # Run the test with user-defined parameters

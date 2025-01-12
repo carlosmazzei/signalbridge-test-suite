@@ -2,10 +2,13 @@
 
 import json
 import logging
+from math import ceil
 from pathlib import Path
+from typing import ClassVar
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import cm
 
 from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
@@ -17,6 +20,13 @@ logger = logging.getLogger(__name__)
 
 class VisualizeResults:
     """Class to visualize the log files and plot it."""
+
+    bbox_props: ClassVar[dict[str, str | float]] = {
+        "boxstyle": "round,pad=0.3",
+        "edgecolor": "black",
+        "facecolor": "white",
+        "alpha": 0.8,
+    }
 
     def select_test_file(self) -> Path | None:
         """Select a test file from the tests folder."""
@@ -56,6 +66,10 @@ class VisualizeResults:
         end_idx: int = start_idx + page_size
         return files[start_idx:end_idx]
 
+    def _get_total_pages(self, total_files: int, page_size: int) -> int:
+        """Calculate total number of pages."""
+        return ceil(total_files / page_size)
+
     def _display_page(
         self,
         page_files: list[Path],
@@ -74,7 +88,10 @@ class VisualizeResults:
         if current_page > 0:
             print("p - Previous page")
         print("q - Return to main menu")
-        print(f"(Page {current_page + 1} of {total_files // page_size + 1})")
+        print(
+            f"(Page {current_page + 1} of "
+            f"{self._get_total_pages(total_files, page_size)})"
+        )
 
     def _handle_choice(
         self,
@@ -152,7 +169,7 @@ class VisualizeResults:
         else:
             return labels, test_data, stats_data, samples, jitter
 
-    def plot_data(
+    def plot_boxplot(
         self,
         labels: list[str],
         test_data: list[np.ndarray],
@@ -175,104 +192,63 @@ class VisualizeResults:
             # Boxplot
             boxplot = ax1.boxplot(test_data, showmeans=True, patch_artist=True)
             ax1.set_title(f"Latency Percentiles (Samples = {samples})", fontsize=10)
-            ax1.set_ylabel("Latency (ms)")
+            ax1.set_ylabel("Latency (ms) - Log Scale")
             ax1.set_yscale("log")
             ax1.grid(axis="y", linestyle="--", alpha=0.7)
+            ax1.yaxis.grid(linestyle="--", alpha=0.2, which="both")
             plt.setp(ax1.get_xticklabels(), rotation=45, ha="right")
 
-            # Add data labels to boxplot
+            # Add statistics box for each boxplot
             for _, (line, stat) in enumerate(
                 zip(boxplot["medians"], stats_data, strict=True)
             ):
-                x, y = line.get_xydata()[1]
-                bbox_props = {
-                    "boxstyle": "round,pad=0.3",
-                    "edgecolor": "black",
-                    "facecolor": "white",
-                    "alpha": 0.7,
-                }
-                ax1.text(
-                    x,
-                    y,
-                    f"Avg: {stat['avg']:.1f}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=8,
-                    bbox=bbox_props,
-                )
-                ax1.text(
-                    x,
-                    stat["min"],
-                    f"Min: {stat['min']:.1f}",
-                    ha="center",
-                    va="top",
-                    fontsize=8,
-                    bbox=bbox_props,
-                )
-                ax1.text(
-                    x,
-                    stat["max"],
-                    f"Max: {stat['max']:.1f}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=8,
-                    bbox=bbox_props,
-                )
-                ax1.text(
-                    x,
-                    stat["p95"],
-                    f"P95: {stat['p95']:.1f}",
-                    ha="center",
-                    va="bottom",
-                    fontsize=8,
-                    bbox=bbox_props,
+                x = line.get_xydata()[1][0]
+                stats_text = (
+                    f'Avg: {stat["avg"]:.1f}\n'
+                    f'Min: {stat["min"]:.1f}\n'
+                    f'Max: {stat["max"]:.1f}\n'
+                    f'P95: {stat["p95"]:.1f}'
                 )
 
-            # Statistics subplot
+                # Posicionar texto à direita do boxplot
+                ax1.text(
+                    x - 0.6,  # x position
+                    ax1.get_ylim()[0] + 8,  # y position at the bottom
+                    stats_text,
+                    ha="left",
+                    va="top",
+                    fontsize=8,
+                    bbox=self.bbox_props,
+                )
+
+            # Dropped messages subplot
             x = np.arange(len(labels)) + 1
             width = 0.1
 
-            ax2.bar(
-                x - 1.5 * width,
-                [s["avg"] for s in stats_data],
-                width,
-                label="Avg",
-                alpha=0.8,
-            )
-            ax2.bar(
-                x - 0.5 * width,
-                [s["min"] for s in stats_data],
-                width,
-                label="Min",
-                alpha=0.8,
-            )
-            ax2.bar(
-                x + 0.5 * width,
-                [s["max"] for s in stats_data],
-                width,
-                label="Max",
-                alpha=0.8,
-            )
-            ax2.bar(
-                x + 1.5 * width,
-                [s["p95"] for s in stats_data],
-                width,
-                label="P95",
-                alpha=0.8,
-            )
-            ax2.bar(
-                x + 2.5 * width,
+            bars = ax2.bar(
+                x,
                 [s["dropped_messages"] for s in stats_data],
                 width,
                 label="Dropped",
                 alpha=0.8,
             )
 
-            ax2.set_ylabel("Latency (ms)")
-            ax2.set_title("Latency Statistics", fontsize=10)
+            # Add data labels inside the bars
+            for bar in bars:
+                height = bar.get_height()
+                ax2.text(
+                    bar.get_x() + bar.get_width() / 2.0,
+                    height,
+                    f"{height:.2f}",
+                    ha="center",
+                    fontsize=8,
+                    bbox=self.bbox_props,
+                )
+
+            ax2.set_ylabel("Dropped Messages")
+            ax2.set_title("Dropped Messages Statistics", fontsize=10)
             ax2.set_xticks(x)
             ax2.set_xticklabels(labels, fontsize=8)
-            ax2.set_yscale("log")
             ax2.legend()
             ax2.grid(axis="y", linestyle="--", alpha=0.7)
             plt.setp(ax2.get_xticklabels(), rotation=45, ha="right")
@@ -282,6 +258,61 @@ class VisualizeResults:
 
         except Exception:
             logger.exception("Error occurred while plotting.")
+
+    def plot_histogram(
+        self,
+        test_data: list[np.ndarray],
+        labels: list[str],
+        stats_data: list[dict[str, float]],
+    ) -> None:
+        """Plot all histograms in the same plot."""
+        try:
+            fig, axes = plt.subplots(1, len(test_data), figsize=(15, 5), sharey=True)
+            plt.subplots_adjust(wspace=0)
+            fig.suptitle("Histogram of Test Results", fontsize=12)
+
+            if len(test_data) == 1:
+                axes = [axes]
+
+            colors = cm.get_cmap("viridis")(np.linspace(0, 1, len(test_data)))
+
+            for ax, data, label, color, stat in zip(
+                axes, test_data, labels, colors, stats_data, strict=True
+            ):
+                ax.hist(
+                    data,
+                    bins=50,
+                    alpha=0.75,
+                    label=label,
+                    color=color,
+                    histtype="stepfilled",
+                )
+                # Add p95 line
+                p95 = stat["p95"]
+                ax.axvline(p95, color=color, linestyle="--", alpha=1.0)
+
+                # Add p95 text label
+                ax.text(
+                    p95,
+                    ax.get_ylim()[1],
+                    f"P95: {p95:.1f}ms",
+                    rotation=90,
+                    va="top",
+                    ha="right",
+                    bbox=self.bbox_props,
+                )
+                ax.set_title(label, fontsize=10)
+                ax.set_xlabel("Latency (ms)")
+                ax.grid(axis="y", linestyle="--", alpha=0.7)
+
+            ax.set_xlabel("Latency (ms)")
+            ax.grid(axis="y", linestyle="--", alpha=0.7)
+            ax.legend()
+            plt.tight_layout()
+            plt.show()
+
+        except Exception:
+            logger.exception("Error occurred while plotting histograms.")
 
     def visualize_test_results(self) -> None:
         """Plot results."""
@@ -294,7 +325,18 @@ class VisualizeResults:
             return
 
         labels, test_data, stats_data, samples, jitter = processed_data
-        self.plot_data(labels, test_data, stats_data, samples, jitter)
+        print("Select visualization type:")
+
+        print("1. Boxplot")
+        print("2. Histogram")
+        choice = input("Enter choice (1 or 2): ")
+
+        if choice == "1":
+            self.plot_boxplot(labels, test_data, stats_data, samples, jitter)
+        elif choice == "2":
+            self.plot_histogram(test_data, labels, stats_data)
+        else:
+            print("Invalid choice. Please select 1 or 2.")
 
     def execute_visualization(self) -> None:
         """Execute visualization."""
