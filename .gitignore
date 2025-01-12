@@ -3,12 +3,16 @@
 .DS_Store
 
 # Remove test results folder
-/tests
+/test_results
+/tests/coverage
+/tests/coverage.xml
+mutants/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+.ruff_cache/
 
 # C extensions
 *.so

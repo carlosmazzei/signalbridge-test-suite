@@ -1,31 +1,15 @@
 # UART Test Routines
 
-This project includes UART testing tools for the simulator interface, featuring a latency test and a simple interface to send commands.
+[![Tests](https://github.com/carlosmazzei/uart-latency-test/actions/workflows/lint.yaml/badge.svg)](https://github.com/carlosmazzei/uart-latency-test/actions/workflows/lint.yaml)
 
-## Project Structure
-
-```shell
-project_root/
-│
-├── src/
-│   ├── latency_test.py
-│   ├── serial_interface.py
-│   ├── application_manager.py
-│   ├── logger.py
-│   └── checksum.py
-│
-├── tests/
-│   └── regression_tests.py
-│
-├── requirements.txt
-└── README.md
-```
+This project includes UART testing tools for the simulator interface, featuring a latency test, command interface, regression testing, and result visualization.
 
 ## Features
 
-- UART Latency test for ESP32 and CP2102
+- UART Latency test for serial interface communication
 - Simple interface to send custom commands
 - Regression testing capabilities
+- Visualization of test results
 - Extensible architecture for adding new test modes
 
 ## Project Setup
@@ -67,7 +51,8 @@ You'll see the following menu:
 1. Run latency test
 2. Send command
 3. Regression test
-4. Exit
+4. Visualize test results
+5. Exit
 ```
 
 ### 1. Run Latency Test
@@ -80,8 +65,9 @@ This option initiates the UART latency test. The test message format is:
 
 - Id: 1 (First 11 bits)
 - Cmd: 20 (PC_ECHO_CMD) (5 bits)
-- Length: 3
-- Data: [0x01, 0x02, 0x03]
+- Length: variable (total length from 6 to 10)
+- Packet id: [0x01, 0x02] counter as packet id
+- Random data: Byte 5 to 10
 
 Test results are saved in `./tests/{timestamp}_output.json`.
 
@@ -96,6 +82,10 @@ Use this option to send custom commands for testing other functions. For example
 ### 3. Regression Test
 
 Runs a series of predefined tests to ensure system stability and performance.
+
+### 4. Visualize Test Results
+
+This option allows you to visualize the test results using matplotlib. You can select a test file from the list and view the latency and dropped messages statistics in a graphical format.
 
 ## Configuration
 

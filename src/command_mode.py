@@ -1,10 +1,13 @@
+"""Command mode module for handling command operations."""
+
 import logging
 import queue
 import sys
 import threading
 
-from checksum import calculate_checksum
 from cobs import cobs
+
+from checksum import calculate_checksum
 from logger_config import setup_logging
 from serial_interface import SerialCommand, SerialInterface
 
@@ -14,14 +17,16 @@ logger = logging.getLogger(__name__)
 
 
 class CommandMode:
-    """CommandMode class for handling command operations.
+    """
+    CommandMode class for handling command operations.
 
     This class encapsulates the functionality for sending commands
     and processing received messages in command mode.
     """
 
-    def __init__(self, serial_interface: SerialInterface):
-        """Initialize the CommandMode.
+    def __init__(self, serial_interface: SerialInterface) -> None:
+        """
+        Initialize the CommandMode.
 
         Args:
         ----
@@ -61,7 +66,7 @@ class CommandMode:
                 "Command mode is not available. Serial interface is not connected.",
             )
 
-    def _print_prompt(self):
+    def _print_prompt(self) -> None:
         """Print the input prompt."""
         with self.input_lock:
             sys.stdout.write(self.prompt)
@@ -87,7 +92,7 @@ class CommandMode:
                     sys.stdout.flush()
         return ""
 
-    def _process_messages(self):
+    def _process_messages(self) -> None:
         """Process incoming messages from the queue."""
         while self.running:
             try:
@@ -102,7 +107,8 @@ class CommandMode:
         decoded_data: bytes,
         byte_string: bytes,
     ) -> None:
-        """Handle incoming messages in command mode.
+        """
+        Handle incoming messages in command mode.
 
         Args:
         ----
@@ -135,7 +141,8 @@ class CommandMode:
                 received_checksum = cobs_decoded[-1:]
                 calculated_checksum = calculate_checksum(cobs_decoded[:-1])
                 logger.info(
-                    "Received raw: %s, decoded: %s, Received Checksum: %s, Calculated Checksum: %s",
+                    "Received raw: %s, decoded: %s, \
+                        Received Checksum: %s, Calculated Checksum: %s",
                     byte_string,
                     decoded_data,
                     received_checksum,
@@ -148,7 +155,8 @@ class CommandMode:
                 sys.stdout.flush()
 
     def _print_decoded_message(self, message: bytes) -> None:
-        """Print each byte of the message and additional decoded information.
+        """
+        Print each byte of the message and additional decoded information.
 
         Args:
         ----

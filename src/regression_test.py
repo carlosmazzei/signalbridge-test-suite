@@ -1,3 +1,5 @@
+"""Regression test module."""
+
 import logging
 
 from logger_config import setup_logging
@@ -11,7 +13,7 @@ logger = logging.getLogger(__name__)
 class RegressionTest:
     """Regression test class."""
 
-    def __init__(self, ser: SerialInterface):
+    def __init__(self, ser: SerialInterface) -> None:
         """Initialize Latency Test Class."""
         self.logger = logger
         self.ser = ser

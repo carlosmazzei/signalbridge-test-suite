@@ -1,11 +1,14 @@
+"""Serial interface module."""
+
 import logging
 import threading
 from collections.abc import Callable
 from enum import Enum
 
 import serial
-from checksum import calculate_checksum
 from cobs import cobs
+
+from checksum import calculate_checksum
 from logger_config import setup_logging
 
 setup_logging()
@@ -24,7 +27,7 @@ class SerialCommand(Enum):
 class SerialInterface:
     """Interface to communicate with serial port."""
 
-    def __init__(self, port: str, baudrate: int, timeout: float):
+    def __init__(self, port: str, baudrate: int, timeout: float) -> None:
         """Initialize the serial interface."""
         self.port = port
         self.baudrate = baudrate
@@ -97,7 +100,7 @@ class SerialInterface:
         self.read_thread = threading.Thread(target=self._read_data)
         self.read_thread.start()
 
-    def _read_data(self):
+    def _read_data(self) -> None:
         byte_string: bytes = b""
         logger.info("Starting read thread...")
 
