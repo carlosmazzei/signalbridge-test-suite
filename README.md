@@ -1,6 +1,6 @@
 # UART Test Routines
 
-[![Tests](https://github.com/carlosmazzei/uart-latency-test/actions/workflows/lint.yaml/badge.svg)](https://github.com/carlosmazzei/uart-latency-test/actions/workflows/lint.yaml)
+[![Tests](https://github.com/carlosmazzei/uart-latency-test/actions/workflows/lint.yml/badge.svg)](https://github.com/carlosmazzei/uart-latency-test/actions/workflows/lint.yml)
 
 This project includes UART testing tools for the simulator interface, featuring a latency test, command interface, regression testing, and result visualization.
 
