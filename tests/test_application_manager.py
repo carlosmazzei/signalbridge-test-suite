@@ -54,6 +54,7 @@ def test_initialize_success(
         Mode.LATENCY,
         Mode.COMMAND,
         Mode.REGRESSION,
+        Mode.STATUS,
     }
     mock_serial.set_message_handler.assert_called_once()
     mock_serial.start_reading.assert_called_once()
@@ -173,6 +174,7 @@ def test_display_menu_all_modes(
         Mode.COMMAND,
         Mode.REGRESSION,
         Mode.VISUALIZE,
+        Mode.STATUS,
     }
 
     app_manager.display_menu()
@@ -183,7 +185,8 @@ def test_display_menu_all_modes(
     assert "2. Send command" in captured.out
     assert "3. Regression test" in captured.out
     assert "4. Visualize test results" in captured.out
-    assert "5. Exit" in captured.out
+    assert "5. Status mode" in captured.out
+    assert "6. Exit" in captured.out
 
 
 def test_display_menu_no_modes(
@@ -201,7 +204,8 @@ def test_display_menu_no_modes(
     assert "2. Send command" not in captured.out
     assert "3. Regression test" not in captured.out
     assert "4. Visualize test results" in captured.out
-    assert "5. Exit" in captured.out
+    assert "5. Status mode" not in captured.out
+    assert "6. Exit" in captured.out
 
 
 def test_display_menu_some_modes(
@@ -218,7 +222,8 @@ def test_display_menu_some_modes(
     assert "2. Send command" not in captured.out
     assert "3. Regression test" not in captured.out
     assert "4. Visualize test results" in captured.out
-    assert "5. Exit" in captured.out
+    assert "5. Status mode" not in captured.out
+    assert "6. Exit" in captured.out
 
 
 @pytest.mark.parametrize(
@@ -228,6 +233,7 @@ def test_display_menu_some_modes(
         ("2", Mode.COMMAND, "run_command_mode"),
         ("3", Mode.REGRESSION, "run_regression_test"),
         ("4", Mode.VISUALIZE, "run_visualization"),
+        ("5", Mode.STATUS, "run_status_mode"),
     ],
 )
 def test_run_valid_choices(
@@ -243,7 +249,7 @@ def test_run_valid_choices(
 
     # Mock the input and the expected method call
     with (
-        patch("builtins.input", side_effect=[choice, "5"]),
+        patch("builtins.input", side_effect=[choice, "6"]),
         patch.object(app_manager, expected_method) as mock_method,
         patch.object(app_manager, "display_menu"),
     ):
@@ -259,7 +265,7 @@ def test_run_exit_choice(
 ) -> None:
     """Test run method with exit choice."""
     with (
-        patch("builtins.input", return_value="5"),
+        patch("builtins.input", return_value="6"),
         patch.object(app_manager, "display_menu"),
     ):
         app_manager.run()
@@ -272,7 +278,7 @@ def test_run_invalid_choice(
 ) -> None:
     """Test run method with invalid choice."""
     with (
-        patch("builtins.input", side_effect=["invalid", "5"]),
+        patch("builtins.input", side_effect=["invalid", "6"]),
         patch.object(app_manager, "display_menu"),
     ):
         app_manager.run()
@@ -289,7 +295,7 @@ def test_run_unavailable_mode(
     app_manager.available_modes.discard(Mode.LATENCY)
 
     with (
-        patch("builtins.input", side_effect=["1", "5"]),
+        patch("builtins.input", side_effect=["1", "6"]),
         patch.object(app_manager, "display_menu"),
     ):
         app_manager.run()
@@ -332,7 +338,7 @@ def test_run_general_exception(
 def test_run_cleanup_called(app_manager: ApplicationManager) -> None:
     """Test cleanup is called when exiting normally."""
     with (
-        patch("builtins.input", return_value="5"),
+        patch("builtins.input", return_value="6"),
         patch.object(app_manager, "display_menu"),
         patch.object(app_manager, "cleanup") as mock_cleanup,
     ):

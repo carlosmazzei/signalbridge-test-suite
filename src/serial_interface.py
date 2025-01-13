@@ -22,6 +22,7 @@ class SerialCommand(Enum):
     ECHO_COMMAND = 20
     KEY_COMMAND = 4
     ANALOG_COMMAND = 3
+    STATUS_COMMAND = 23
 
 
 class SerialInterface:
