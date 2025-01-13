@@ -79,7 +79,9 @@ class ApplicationManager:
             self.serial_interface.start_reading()
             self.latency_test = LatencyTest(self.serial_interface)
             self.command_mode = CommandMode(self.serial_interface)
-            self.available_modes.update([Mode.LATENCY, Mode.COMMAND, Mode.REGRESSION])
+            self.available_modes.update(
+                [Mode.LATENCY, Mode.COMMAND, Mode.REGRESSION, Mode.STATUS]
+            )
             logger.info("Serial interface opened successfully.")
         else:
             logger.error(
@@ -176,7 +178,7 @@ class ApplicationManager:
             print("3. Regression test")
         if Mode.VISUALIZE in self.available_modes:
             print("4. Visualize test results")
-        if Mode.VISUALIZE in self.available_modes:
+        if Mode.STATUS in self.available_modes:
             print("5. Status mode")
         print("6. Exit")
 
