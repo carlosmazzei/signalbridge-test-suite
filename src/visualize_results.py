@@ -326,7 +326,6 @@ class VisualizeResults:
 
         labels, test_data, stats_data, samples, jitter = processed_data
         print("Select visualization type:")
-
         print("1. Boxplot")
         print("2. Histogram")
         choice = input("Enter choice (1 or 2): ")

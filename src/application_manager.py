@@ -13,6 +13,7 @@ from visualize_results import VisualizeResults
 
 if TYPE_CHECKING:
     from regression_test import RegressionTest
+    from status_mode import StatusMode
 
 setup_logging()
 
@@ -27,6 +28,7 @@ class Mode(Enum):
     COMMAND = 2
     REGRESSION = 3
     VISUALIZE = 4
+    STATUS = 5
 
 
 class ApplicationManager:
@@ -56,7 +58,8 @@ class ApplicationManager:
         )
         self.latency_test: LatencyTest | None = None
         self.regression_test: RegressionTest | None = None
-        self.command_mode: CommandMode | None = None  # New attribute for command mode
+        self.command_mode: CommandMode | None = None
+        self.status_mode: StatusMode | None = None
         self.mode: Mode = Mode.IDLE
         self.available_modes = {Mode.VISUALIZE}
         self.visualize_results: VisualizeResults | None = None
@@ -107,6 +110,8 @@ class ApplicationManager:
             self.command_mode.handle_message(command, decoded_data, byte_string)
         elif self.mode == Mode.REGRESSION and self.regression_test:
             self.regression_test.handle_message(command, decoded_data, byte_string)
+        elif self.mode == Mode.STATUS and self.status_mode:
+            self.status_mode.handle_message(command, decoded_data)
 
     def run_latency_test(self) -> None:
         """Run latency test if available."""
@@ -137,6 +142,16 @@ class ApplicationManager:
                 "Regression test is not available. Serial interface is not connected.",
             )
 
+    def run_status_mode(self) -> None:
+        """Run status mode if available."""
+        if Mode.STATUS in self.available_modes and self.status_mode:
+            self.mode = Mode.STATUS
+            self.status_mode.execute_test()
+        else:
+            logger.info(
+                "Status mode is not available. Serial interface is not connected.",
+            )
+
     def run_visualization(self) -> None:
         """Run visualization if available."""
         if self.visualize_results:
@@ -161,7 +176,9 @@ class ApplicationManager:
             print("3. Regression test")
         if Mode.VISUALIZE in self.available_modes:
             print("4. Visualize test results")
-        print("5. Exit")
+        if Mode.VISUALIZE in self.available_modes:
+            print("5. Status mode")
+        print("6. Exit")
 
     def run(self) -> None:
         """
@@ -184,7 +201,9 @@ class ApplicationManager:
                     self.run_regression_test()
                 elif choice == "4" and Mode.VISUALIZE in self.available_modes:
                     self.run_visualization()
-                elif choice == "5":
+                elif choice == "5" and Mode.STATUS in self.available_modes:
+                    self.run_status_mode()
+                elif choice == "6":
                     logger.info("Exiting...")
                     break
                 else:
