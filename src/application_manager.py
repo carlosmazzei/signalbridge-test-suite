@@ -9,11 +9,11 @@ from command_mode import CommandMode  # New import for refactored command mode
 from latency_test import LatencyTest
 from logger_config import setup_logging
 from serial_interface import SerialInterface
+from status_mode import StatusMode
 from visualize_results import VisualizeResults
 
 if TYPE_CHECKING:
     from regression_test import RegressionTest
-    from status_mode import StatusMode
 
 setup_logging()
 
@@ -79,6 +79,7 @@ class ApplicationManager:
             self.serial_interface.start_reading()
             self.latency_test = LatencyTest(self.serial_interface)
             self.command_mode = CommandMode(self.serial_interface)
+            self.status_mode = StatusMode(self.serial_interface)
             self.available_modes.update(
                 [Mode.LATENCY, Mode.COMMAND, Mode.REGRESSION, Mode.STATUS]
             )
@@ -182,6 +183,26 @@ class ApplicationManager:
             print("5. Status mode")
         print("6. Exit")
 
+    def _handle_user_choice(self, choice: str) -> bool:
+        """Handle user choice and return whether to continue the loop."""
+        if choice == "1" and Mode.LATENCY in self.available_modes:
+            os.system("clear")  # noqa: S605, S607
+            self.run_latency_test()
+        elif choice == "2" and Mode.COMMAND in self.available_modes:
+            self.run_command_mode()
+        elif choice == "3" and Mode.REGRESSION in self.available_modes:
+            self.run_regression_test()
+        elif choice == "4" and Mode.VISUALIZE in self.available_modes:
+            self.run_visualization()
+        elif choice == "5" and Mode.STATUS in self.available_modes:
+            self.run_status_mode()
+        elif choice == "6":
+            logger.info("Exiting...")
+            return False
+        else:
+            logger.info("Invalid choice or option not available\n")
+        return True
+
     def run(self) -> None:
         """
         Run the main application loop.
@@ -192,24 +213,9 @@ class ApplicationManager:
         try:
             while True:
                 self.display_menu()
-
                 choice = input("Enter a choice: ")
-                if choice == "1" and Mode.LATENCY in self.available_modes:
-                    os.system("clear")  # noqa: S605, S607
-                    self.run_latency_test()
-                elif choice == "2" and Mode.COMMAND in self.available_modes:
-                    self.run_command_mode()
-                elif choice == "3" and Mode.REGRESSION in self.available_modes:
-                    self.run_regression_test()
-                elif choice == "4" and Mode.VISUALIZE in self.available_modes:
-                    self.run_visualization()
-                elif choice == "5" and Mode.STATUS in self.available_modes:
-                    self.run_status_mode()
-                elif choice == "6":
-                    logger.info("Exiting...")
+                if not self._handle_user_choice(choice):
                     break
-                else:
-                    logger.info("Invalid choice or option not available\n")
         except KeyboardInterrupt:
             logger.info("KeyboardInterrupt received, exiting gracefully.")
         except Exception:

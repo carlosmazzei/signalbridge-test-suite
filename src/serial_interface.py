@@ -22,7 +22,8 @@ class SerialCommand(Enum):
     ECHO_COMMAND = 20
     KEY_COMMAND = 4
     ANALOG_COMMAND = 3
-    STATUS_COMMAND = 23
+    ERROR_STATUS_COMMAND = 23
+    TASK_STATUS_COMMAND = 24
 
 
 class SerialInterface:
@@ -51,6 +52,7 @@ class SerialInterface:
                 xonxoff=False,
                 rtscts=False,
             )
+            self.ser.write_timeout = 0
             logger.info("Serial port opened: %s", self.ser)
         except serial.SerialException:
             logger.exception("Error opening serial port.")
