@@ -109,16 +109,23 @@ class SerialInterface:
 
         try:
             while not self.stop_event.is_set():
-                byte: bytes = self.ser.read(1) if self.ser else b""
-                if len(byte) != 0:
-                    if byte == b"\x00":
-                        decoded_data: bytes = cobs.decode(byte_string)
-                        command: int = decoded_data[1] & 0x1F
-                        if self.message_handler:
-                            self.message_handler(command, decoded_data, byte_string)
-                        byte_string = b""
-                    else:
-                        byte_string += byte
+                try:
+                    byte: bytes = self.ser.read(1) if self.ser else b""
+                    if len(byte) != 0:
+                        if byte == b"\x00":
+                            decoded_data: bytes = cobs.decode(byte_string)
+                            command: int = decoded_data[1] & 0x1F
+                            if self.message_handler:
+                                self.message_handler(command, decoded_data, byte_string)
+                            byte_string = b""
+                        else:
+                            byte_string += byte
+                except IndexError:
+                    logger.exception("Index out of range")
+                    byte_string = b""
+                except cobs.DecodeError:
+                    logger.exception("Decode Error")
+                    byte_string = b""
 
         except serial.SerialException:
             logger.exception("Error reading serial port")

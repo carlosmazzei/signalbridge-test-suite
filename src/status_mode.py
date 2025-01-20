@@ -49,10 +49,11 @@ class StatusMode:
         LED_OUT_ERROR = 4
         WATCHDOG_ERROR = 5
         MSG_MALFORMED_ERROR = 6
-        RECEIVE_BUFFER_OVERFLOW_ERROR = 7
-        CHECKSUM_ERROR = 8
-        BUFFER_OVERFLOW_ERROR = 9
-        UNKNOWN_CMD_ERROR = 10
+        COBS_DECODE_ERROR = 7
+        RECEIVE_BUFFER_OVERFLOW_ERROR = 8
+        CHECKSUM_ERROR = 9
+        BUFFER_OVERFLOW_ERROR = 10
+        UNKNOWN_CMD_ERROR = 11
 
     class TaskNames(StrEnum):
         """Definition of tasks."""
@@ -60,7 +61,7 @@ class StatusMode:
         IDLE_TASK_NAME = "Idle"
         CDC_TASK_NAME = "CDC"
         UART_TASK_NAME = "UART handling"
-        DECODE_TASK_NAME = "Decode"
+        DECODE_TASK_NAME = "Decode reception"
         PROCESS_TASK_NAME = "Inbound process"
         ADC_TASK_NAME = "ADC read"
         KEY_TASK_NAME = "Key read"
@@ -89,6 +90,7 @@ class StatusMode:
             self.ErrorCodes.LED_OUT_ERROR: ErrorItem("LED Output Error"),
             self.ErrorCodes.WATCHDOG_ERROR: ErrorItem("Watchdog Error"),
             self.ErrorCodes.MSG_MALFORMED_ERROR: ErrorItem("Malformed Message Error"),
+            self.ErrorCodes.COBS_DECODE_ERROR: ErrorItem("Cobs Decode Error"),
             self.ErrorCodes.RECEIVE_BUFFER_OVERFLOW_ERROR: ErrorItem(
                 "Receive Buffer Overflow"
             ),
@@ -134,7 +136,7 @@ class StatusMode:
                 if status_index in self.error_items:
                     error_item = self.error_items[status_index]
                     error_item.value = status_value
-                    error_item.last_updated = time.perf_counter()
+                    error_item.last_updated = time.time()
                     self.logger.info(
                         "%s value updated to %d", error_item.message, error_item.value
                     )
@@ -169,7 +171,7 @@ class StatusMode:
                     task_item.absoulute_time = abs_time
                     task_item.percent_time = perc_time
                     task_item.high_watermark = h_watermark
-                    task_item.last_updated = time.perf_counter()
+                    task_item.last_updated = time.time()
                     self.logger.info("[%s] updated", task_item.name)
 
         except IndexError:
@@ -178,9 +180,7 @@ class StatusMode:
     def _status_update(self, header: bytes, index: int) -> None:
         """Send status update command."""
         payload = header + bytes([0x01]) + index.to_bytes(1, byteorder="big")
-        self.logger.info(
-            "Sending status update command for [%s])", self.error_items[index].message
-        )
+        self.logger.info("Sending status update command for [%s])", index)
         self.ser.write(payload)
 
     def _update_error_status(self) -> None:
@@ -228,6 +228,13 @@ class StatusMode:
             )
         )
 
+    def format_time_from_microseconds(self, microseconds: int) -> str:
+        """Format time from microseconds."""
+        milliseconds = microseconds / 1000
+        seconds, ms = divmod(milliseconds, 1000)
+        minutes, seconds = divmod(seconds, 60)
+        return f"{int(minutes):02}:{int(seconds):02}:{int(ms):03}"
+
     def _display_task_status(self) -> None:
         """Display task status."""
         print("\nTask Status:")
@@ -240,10 +247,11 @@ class StatusMode:
                     item.last_updated,
                     tz=datetime.UTC,
                 ).strftime("%Y-%m-%d %H:%M:%S")
+            formatted_time = self.format_time_from_microseconds(item.absoulute_time)
             task_data.append(
                 [
                     item.name,
-                    item.absoulute_time,
+                    formatted_time,
                     f"{item.percent_time}%",
                     item.high_watermark,
                     last_updated,
@@ -255,7 +263,7 @@ class StatusMode:
                 task_data,
                 headers=[
                     "Task",
-                    "Absolute Time",
+                    "Absolute Time (mm:ss:ms)",
                     "% Time",
                     "High Watermark",
                     "Last Updated",
@@ -263,6 +271,22 @@ class StatusMode:
                 tablefmt="simple_grid",
             )
         )
+
+        core0_total_time = (
+            self.task_items[self.TaskIndex.CDC_TASK_INDEX].absoulute_time
+            + self.task_items[self.TaskIndex.UART_EVENT_TASK_INDEX].absoulute_time
+        )
+        print(f"\nCore 0 total time: {core0_total_time:,.3f}")
+
+        core1_total_time = (
+            self.task_items[self.TaskIndex.IDLE_TASK_INDEX].absoulute_time
+            + self.task_items[self.TaskIndex.ENCODER_READ_TASK_INDEX].absoulute_time
+            + self.task_items[self.TaskIndex.ADC_READ_TASK_INDEX].absoulute_time
+            + self.task_items[self.TaskIndex.KEYPAD_TASK_INDEX].absoulute_time
+            + self.task_items[self.TaskIndex.PROCESS_OUTBOUND_TASK_INDEX].absoulute_time
+            + self.task_items[self.TaskIndex.DECODE_RECEPTION_TASK_INDEX].absoulute_time
+        )
+        print(f"Core 1 total time: {core1_total_time:,.3f}")
 
     def _handle_user_choice(self, choice: str) -> bool:
         """Handle user choice and return whether to continue."""
