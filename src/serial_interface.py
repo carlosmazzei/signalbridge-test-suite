@@ -22,7 +22,7 @@ class SerialCommand(Enum):
     ECHO_COMMAND = 20
     KEY_COMMAND = 4
     ANALOG_COMMAND = 3
-    ERROR_STATUS_COMMAND = 23
+    STATISTICS_STATUS_COMMAND = 23
     TASK_STATUS_COMMAND = 24
 
 
@@ -38,6 +38,8 @@ class SerialInterface:
         self.stop_event = threading.Event()
         self.read_thread = None
         self.message_handler: Callable[[int, bytes, bytes], None] | None = None
+        self.bytes_sent: int = 0
+        self.bytes_received: int = 0
 
     def open(self) -> bool:
         """Open serial port."""
@@ -53,6 +55,8 @@ class SerialInterface:
                 rtscts=False,
             )
             self.ser.write_timeout = 0
+            self.ser.reset_input_buffer()
+            self.ser.reset_output_buffer()
             logger.info("Serial port opened: %s", self.ser)
         except serial.SerialException:
             logger.exception("Error opening serial port.")
@@ -84,7 +88,8 @@ class SerialInterface:
             checksum = calculate_checksum(data)
             payload_with_checksum = data + checksum
             message = cobs.encode(payload_with_checksum) + b"\x00"
-            self.ser.write(message)
+            bytes_writen = self.ser.write(message) or 0
+            self.bytes_sent += bytes_writen
             logger.info("Published (encoded) `%s`", message)
         else:
             logger.info("Serial port not open")
@@ -103,30 +108,31 @@ class SerialInterface:
         self.read_thread = threading.Thread(target=self._read_data)
         self.read_thread.start()
 
+    def _process_complete_message(self, byte_string: bytes) -> None:
+        """Process a complete message."""
+        try:
+            decoded_data: bytes = cobs.decode(byte_string)
+            command: int = decoded_data[1] & 0x1F
+            if self.message_handler:
+                self.message_handler(command, decoded_data, byte_string)
+        except (IndexError, cobs.DecodeError):
+            logger.exception("Error processing message: %s")
+
     def _read_data(self) -> None:
+        """Read thread."""
         byte_string: bytes = b""
         logger.info("Starting read thread...")
 
         try:
             while not self.stop_event.is_set():
-                try:
-                    byte: bytes = self.ser.read(1) if self.ser else b""
-                    if len(byte) != 0:
-                        if byte == b"\x00":
-                            decoded_data: bytes = cobs.decode(byte_string)
-                            command: int = decoded_data[1] & 0x1F
-                            if self.message_handler:
-                                self.message_handler(command, decoded_data, byte_string)
-                            byte_string = b""
-                        else:
-                            byte_string += byte
-                except IndexError:
-                    logger.exception("Index out of range")
-                    byte_string = b""
-                except cobs.DecodeError:
-                    logger.exception("Decode Error")
-                    byte_string = b""
-
+                byte: bytes = self.ser.read(1) if self.ser else b""
+                if len(byte) != 0:
+                    self.bytes_received += len(byte)
+                    if byte == b"\x00":
+                        self._process_complete_message(byte_string)
+                        byte_string = b""
+                    else:
+                        byte_string += byte
         except serial.SerialException:
             logger.exception("Error reading serial port")
             self.stop_event.set()

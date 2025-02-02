@@ -12,13 +12,13 @@ from serial_interface import SerialCommand, SerialInterface
 
 logger = logging.getLogger(__name__)
 
-ERROR_HEADER_BYTES = bytes([0x00, 0x37])
+STATISTICS_HEADER_BYTES = bytes([0x00, 0x37])
 TASK_HEADER_BYTES = bytes([0x00, 0x38])
 
 
 @dataclass
-class ErrorItem:
-    """Represents an error item."""
+class StatisticsItem:
+    """Represents an statistics item."""
 
     message: str
     value: int = 0
@@ -40,8 +40,8 @@ class TaskItem:
 class StatusMode:
     """Status mode class."""
 
-    class ErrorCodes(IntEnum):
-        """Error codes for status mode."""
+    class StatisticsCodes(IntEnum):
+        """Statistics codes for status mode."""
 
         QUEUE_SEND_ERROR = 1
         QUEUE_RECEIVE_ERROR = 2
@@ -54,6 +54,8 @@ class StatusMode:
         CHECKSUM_ERROR = 9
         BUFFER_OVERFLOW_ERROR = 10
         UNKNOWN_CMD_ERROR = 11
+        BYTES_SENT = 12
+        BYTES_RECEIVED = 13
 
     class TaskNames(StrEnum):
         """Definition of tasks."""
@@ -83,20 +85,34 @@ class StatusMode:
         """Initialize status mode class."""
         self.logger = logger
         self.ser = ser
-        self.error_items: dict[int, ErrorItem] = {
-            self.ErrorCodes.QUEUE_SEND_ERROR: ErrorItem("Queue Send Error"),
-            self.ErrorCodes.QUEUE_RECEIVE_ERROR: ErrorItem("Queue Receive Error"),
-            self.ErrorCodes.DISPLAY_OUT_ERROR: ErrorItem("Display Output Error"),
-            self.ErrorCodes.LED_OUT_ERROR: ErrorItem("LED Output Error"),
-            self.ErrorCodes.WATCHDOG_ERROR: ErrorItem("Watchdog Error"),
-            self.ErrorCodes.MSG_MALFORMED_ERROR: ErrorItem("Malformed Message Error"),
-            self.ErrorCodes.COBS_DECODE_ERROR: ErrorItem("Cobs Decode Error"),
-            self.ErrorCodes.RECEIVE_BUFFER_OVERFLOW_ERROR: ErrorItem(
+        self.error_items: dict[int, StatisticsItem] = {
+            self.StatisticsCodes.QUEUE_SEND_ERROR: StatisticsItem("Queue Send Error"),
+            self.StatisticsCodes.QUEUE_RECEIVE_ERROR: StatisticsItem(
+                "Queue Receive Error"
+            ),
+            self.StatisticsCodes.DISPLAY_OUT_ERROR: StatisticsItem(
+                "Display Output Error"
+            ),
+            self.StatisticsCodes.LED_OUT_ERROR: StatisticsItem("LED Output Error"),
+            self.StatisticsCodes.WATCHDOG_ERROR: StatisticsItem("Watchdog Error"),
+            self.StatisticsCodes.MSG_MALFORMED_ERROR: StatisticsItem(
+                "Malformed Message Error"
+            ),
+            self.StatisticsCodes.COBS_DECODE_ERROR: StatisticsItem("Cobs Decode Error"),
+            self.StatisticsCodes.RECEIVE_BUFFER_OVERFLOW_ERROR: StatisticsItem(
                 "Receive Buffer Overflow"
             ),
-            self.ErrorCodes.CHECKSUM_ERROR: ErrorItem("Checksum Error"),
-            self.ErrorCodes.BUFFER_OVERFLOW_ERROR: ErrorItem("Buffer Overflow Error"),
-            self.ErrorCodes.UNKNOWN_CMD_ERROR: ErrorItem("Unknown Command Error"),
+            self.StatisticsCodes.CHECKSUM_ERROR: StatisticsItem("Checksum Error"),
+            self.StatisticsCodes.BUFFER_OVERFLOW_ERROR: StatisticsItem(
+                "Buffer Overflow Error"
+            ),
+            self.StatisticsCodes.UNKNOWN_CMD_ERROR: StatisticsItem(
+                "Unknown Command Error"
+            ),
+            self.StatisticsCodes.BYTES_RECEIVED: StatisticsItem(
+                "Number of Bytes received"
+            ),
+            self.StatisticsCodes.BYTES_SENT: StatisticsItem("Number of bytes sent"),
         }
 
         self.task_items: dict[int, TaskItem] = {
@@ -127,9 +143,14 @@ class StatusMode:
     def handle_message(self, command: int, decoded_data: bytes) -> None:
         """Handle incoming messages."""
         try:
-            if command == SerialCommand.ERROR_STATUS_COMMAND.value:
+            if command == SerialCommand.STATISTICS_STATUS_COMMAND.value:
                 status_index = decoded_data[3]
-                status_value_bytes = [decoded_data[4], decoded_data[5]]
+                status_value_bytes = [
+                    decoded_data[4],
+                    decoded_data[5],
+                    decoded_data[6],
+                    decoded_data[7],
+                ]
                 status_value = int.from_bytes(status_value_bytes, byteorder="big")
 
                 # Update the corresponding error item
@@ -187,7 +208,7 @@ class StatusMode:
         """Send update status request for error items."""
         self.logger.info("Requesting for status ...")
         for index in self.error_items:
-            self._status_update(ERROR_HEADER_BYTES, index)
+            self._status_update(STATISTICS_HEADER_BYTES, index)
             time.sleep(0.1)
             self.logger.info(
                 "[%s] status update requested", self.error_items[index].message
@@ -206,9 +227,9 @@ class StatusMode:
 
         self.logger.info("Status request complete")
 
-    def _display_error_status(self) -> None:
-        """Display error status."""
-        print("\nError Status:")
+    def _display_statistics_status(self) -> None:
+        """Display statistics status."""
+        print("\nStatistics Status:")
         error_data = []
         for index in self.error_items:
             item = self.error_items[index]
@@ -227,6 +248,9 @@ class StatusMode:
                 tablefmt="simple_grid",
             )
         )
+
+        print(f"Total bytes sent: {self.ser.bytes_sent:,.0f}")
+        print(f"Total bytes received: {self.ser.bytes_received:,.0f}")
 
     def format_time_from_microseconds(self, microseconds: int) -> str:
         """Format time from microseconds."""
@@ -305,7 +329,7 @@ class StatusMode:
     def execute_test(self) -> None:
         """Execute status mode test."""
         while True:
-            self._display_error_status()
+            self._display_statistics_status()
             self._display_task_status()
 
             print("\nSelect an option:")
