@@ -73,6 +73,7 @@ class LatencyTest:
         num_times: int = DEFAULT_NUM_TIMES,
         max_wait: float = DEFAULT_MAX_WAIT,
         min_wait: float = DEFAULT_MIN_WAIT,
+        wait_time: float = DEFAULT_WAIT_TIME,
         samples: int = DEFAULT_SAMPLES,
         length: int = DEFAULT_MESSAGE_LENGTH,
         *,
@@ -86,6 +87,7 @@ class LatencyTest:
             num_times (int): Number of test iterations.
             max_wait (float): Maximum wait time between messages.
             min_wait (float): Minimum wait time between messages.
+            wait_time (float): Wait time after tests.
             samples (int): Number of samples per test.
             length (int): Length of the message to send.
             jitter (bool): Whether to add jitter to wait times.
@@ -108,7 +110,7 @@ class LatencyTest:
             for j in range(num_times):
                 self.latency_results.clear()
                 waiting_time = min_wait + (max_wait - min_wait) * (j / (num_times - 1))
-                print(f"Test {j}, waiting time: {waiting_time} s")
+                logger.info("Test %s, waiting time: %d s", j, waiting_time)
                 random_max = (max_wait - min_wait) * 0.2
 
                 burst_init_time = time.perf_counter()
@@ -136,8 +138,8 @@ class LatencyTest:
                 latency_results_copy[j] = self.latency_results.copy()
                 output_data.append({**test_results, "results": latency_results_copy[j]})
 
-                print(f"Waiting for {DEFAULT_WAIT_TIME} seconds to collect results...")
-                time.sleep(DEFAULT_WAIT_TIME)
+                logger.info("Waiting for %d seconds to collect results...", wait_time)
+                time.sleep(wait_time)
 
         self._write_output_to_file(file_path, output_data)
 
@@ -354,7 +356,7 @@ class LatencyTest:
                 message_length,
             ) = self._show_options()
 
-            print(f"Wait for {DEFAULT_WAIT_TIME}s and start test ...")
+            print(f"Wait for {wait_time}s and start test ...")
             time.sleep(wait_time)
 
             # Run the test with user-defined parameters
@@ -363,6 +365,7 @@ class LatencyTest:
                 max_wait=max_wait,
                 min_wait=min_wait,
                 samples=num_samples,
+                wait_time=wait_time,
                 jitter=jitter,
                 length=message_length,
             )

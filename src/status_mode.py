@@ -43,8 +43,9 @@ class StatusMode:
     class StatisticsCodes(IntEnum):
         """Statistics codes for status mode."""
 
-        QUEUE_SEND_ERROR = 1
-        QUEUE_RECEIVE_ERROR = 2
+        QUEUE_SEND_ERROR = 0
+        QUEUE_RECEIVE_ERROR = 1
+        CDC_QUEUE_SEND_ERROR = 2
         DISPLAY_OUT_ERROR = 3
         LED_OUT_ERROR = 4
         WATCHDOG_ERROR = 5
@@ -61,7 +62,8 @@ class StatusMode:
         """Definition of tasks."""
 
         IDLE_TASK_NAME = "Idle"
-        CDC_TASK_NAME = "CDC"
+        CDC_TASK_NAME = "CDC Task"
+        CDC_WRITE_TASK_NAME = "CDC Write Task"
         UART_TASK_NAME = "UART handling"
         DECODE_TASK_NAME = "Decode reception"
         PROCESS_TASK_NAME = "Inbound process"
@@ -73,13 +75,14 @@ class StatusMode:
         """Definitions of task indexes."""
 
         CDC_TASK_INDEX = 0
-        UART_EVENT_TASK_INDEX = 1
-        DECODE_RECEPTION_TASK_INDEX = 2
-        PROCESS_OUTBOUND_TASK_INDEX = 3
-        ADC_READ_TASK_INDEX = 4
-        KEYPAD_TASK_INDEX = 5
-        ENCODER_READ_TASK_INDEX = 6
-        IDLE_TASK_INDEX = 7
+        CDC_WRITE_TASK_INDEX = 1
+        UART_EVENT_TASK_INDEX = 2
+        DECODE_RECEPTION_TASK_INDEX = 3
+        PROCESS_OUTBOUND_TASK_INDEX = 4
+        ADC_READ_TASK_INDEX = 5
+        KEYPAD_TASK_INDEX = 6
+        ENCODER_READ_TASK_INDEX = 7
+        IDLE_TASK_INDEX = 8
 
     def __init__(self, ser: SerialInterface) -> None:
         """Initialize status mode class."""
@@ -89,6 +92,9 @@ class StatusMode:
             self.StatisticsCodes.QUEUE_SEND_ERROR: StatisticsItem("Queue Send Error"),
             self.StatisticsCodes.QUEUE_RECEIVE_ERROR: StatisticsItem(
                 "Queue Receive Error"
+            ),
+            self.StatisticsCodes.CDC_QUEUE_SEND_ERROR: StatisticsItem(
+                "CDC Queue Receive Error"
             ),
             self.StatisticsCodes.DISPLAY_OUT_ERROR: StatisticsItem(
                 "Display Output Error"
@@ -109,10 +115,10 @@ class StatusMode:
             self.StatisticsCodes.UNKNOWN_CMD_ERROR: StatisticsItem(
                 "Unknown Command Error"
             ),
+            self.StatisticsCodes.BYTES_SENT: StatisticsItem("Number of Bytes sent"),
             self.StatisticsCodes.BYTES_RECEIVED: StatisticsItem(
                 "Number of Bytes received"
             ),
-            self.StatisticsCodes.BYTES_SENT: StatisticsItem("Number of bytes sent"),
         }
 
         self.task_items: dict[int, TaskItem] = {
@@ -120,6 +126,9 @@ class StatusMode:
                 name=self.TaskNames.IDLE_TASK_NAME
             ),
             self.TaskIndex.CDC_TASK_INDEX: TaskItem(name=self.TaskNames.CDC_TASK_NAME),
+            self.TaskIndex.CDC_WRITE_TASK_INDEX: TaskItem(
+                name=self.TaskNames.CDC_WRITE_TASK_NAME
+            ),
             self.TaskIndex.UART_EVENT_TASK_INDEX: TaskItem(
                 name=self.TaskNames.UART_TASK_NAME
             ),
@@ -204,8 +213,8 @@ class StatusMode:
         self.logger.info("Sending status update command for [%s])", index)
         self.ser.write(payload)
 
-    def _update_error_status(self) -> None:
-        """Send update status request for error items."""
+    def _update_statistics_status(self) -> None:
+        """Send update status request for statistics items."""
         self.logger.info("Requesting for status ...")
         for index in self.error_items:
             self._status_update(STATISTICS_HEADER_BYTES, index)
@@ -315,7 +324,7 @@ class StatusMode:
     def _handle_user_choice(self, choice: str) -> bool:
         """Handle user choice and return whether to continue."""
         if choice == "1":
-            self._update_error_status()
+            self._update_statistics_status()
         elif choice == "2":
             self._update_task_status()
         elif choice == "3":
@@ -333,7 +342,7 @@ class StatusMode:
             self._display_task_status()
 
             print("\nSelect an option:")
-            print("1. Request error status")
+            print("1. Request statistics status")
             print("2. Request task status")
             print("3. Show status")
             print("4. Exit")
