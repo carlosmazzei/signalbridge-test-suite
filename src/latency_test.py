@@ -45,8 +45,8 @@ class LatencyTest:
         """
         self.logger = logger
         self.ser = ser
-        self.latency_message: list[float] = [0.0] * MAX_SAMPLE_SIZE
-        self.latency_results: list[float] = []
+        self.latency_msg_sent: dict[int, float] = {}
+        self.latency_msg_received: dict[int, float] = {}
 
     def publish(self, iteration_counter: int, message_length: int) -> None:
         """
@@ -64,7 +64,7 @@ class LatencyTest:
         m_length = (len(trailer) + 2).to_bytes(1, byteorder="big")
         payload = HEADER_BYTES + m_length + counter + trailer
 
-        self.latency_message[iteration_counter] = time.perf_counter()
+        self.latency_msg_sent[iteration_counter] = time.perf_counter()
         self.ser.write(payload)
         logger.info("Published (encoded) `%s`, counter %s", payload, iteration_counter)
 
@@ -108,7 +108,8 @@ class LatencyTest:
 
         with alive_bar(samples * num_times, title=bar_title) as pbar:
             for j in range(num_times):
-                self.latency_results.clear()
+                self.latency_msg_sent.clear()
+                self.latency_msg_received.clear()
                 waiting_time = min_wait + (max_wait - min_wait) * (j / (num_times - 1))
                 logger.info("Test %s, waiting time: %d s", j, waiting_time)
                 random_max = (max_wait - min_wait) * 0.2
@@ -125,6 +126,8 @@ class LatencyTest:
                     pbar()
 
                 burst_elapsed_time = time.perf_counter() - burst_init_time
+                logger.info("Waiting for %d seconds to collect results...", wait_time)
+                time.sleep(wait_time)
                 # Calculated bitrate considering the total payload (HEADER_BYTES + 1)
                 bitrate = (samples * 8 * length) / burst_elapsed_time
 
@@ -135,11 +138,8 @@ class LatencyTest:
                     bitrate=bitrate,
                     jitter=jitter,
                 )
-                latency_results_copy[j] = self.latency_results.copy()
+                latency_results_copy[j] = list(self.latency_msg_received.values())
                 output_data.append({**test_results, "results": latency_results_copy[j]})
-
-                logger.info("Waiting for %d seconds to collect results...", wait_time)
-                time.sleep(wait_time)
 
         self._write_output_to_file(file_path, output_data)
 
@@ -157,7 +157,7 @@ class LatencyTest:
 
         Args:
         ----
-            test (int): Number of the test
+            test (int): Number of the test.
             samples (int): Number of samples in the test.
             waiting_time (float): Waiting time between messages.
             bitrate (float): Average bitrate of each burst of samples.
@@ -168,11 +168,12 @@ class LatencyTest:
             dict[str, Any]: A dictionary containing test results.
 
         """
-        dropped_messages = samples - len(self.latency_results)
-        print(f"Dropped messages: {dropped_messages}")
+        # Calculate dropped messages based on the unique echo responses.
+        dropped_messages = len(self.latency_msg_sent) - len(self.latency_msg_received)
+        logger.info("Dropped messages: %d ", dropped_messages)
 
-        if not self.latency_results:
-            print("No results collected for this test.")
+        if not self.latency_msg_received:
+            logger.info("No results collected for this test.")
             return {
                 "test": test,
                 "waiting_time": waiting_time,
@@ -186,16 +187,17 @@ class LatencyTest:
                 "dropped_messages": dropped_messages,
             }
 
-        latency_avg = sum(self.latency_results) / len(self.latency_results)
-        latency_min = min(self.latency_results)
-        latency_max = max(self.latency_results)
-        latency_p95 = np.percentile(self.latency_results, 95)
+        latencies = list(self.latency_msg_received.values())
+        latency_avg = sum(latencies) / len(latencies)
+        latency_min = min(latencies)
+        latency_max = max(latencies)
+        latency_p95 = np.percentile(latencies, 95)
 
-        print(f"Average latency: {latency_avg * 1e3} ms")
-        print(f"Minimum latency: {latency_min * 1e3} ms")
-        print(f"Maximum latency: {latency_max * 1e3} ms")
-        print(f"P95 latency: {latency_p95 * 1e3} ms")
-        print(f"Average bitrate: {bitrate}")
+        logger.info("Average latency: %f ms", latency_avg * 1e3)
+        logger.info("Minimum latency: %f ms", latency_min * 1e3)
+        logger.info("Maximum latency: %f ms", latency_max * 1e3)
+        logger.info("P95 latency: %f ms", latency_p95 * 1e3)
+        logger.info("Average bitrate: %s", bitrate)
 
         return {
             "test": test,
@@ -245,9 +247,9 @@ class LatencyTest:
             try:
                 counter_bytes = [decoded_data[3], decoded_data[4]]
                 counter = int.from_bytes(counter_bytes, byteorder="big")
-                latency = time.perf_counter() - self.latency_message[counter]
-                self.latency_results.append(latency)
-                logger.info("Message %.5f latency: %.5f ms", counter, latency * 1e3)
+                latency = time.perf_counter() - self.latency_msg_sent[counter]
+                self.latency_msg_received[counter] = latency
+                logger.info("Message %d latency: %.5f ms", counter, latency * 1e3)
             except IndexError:
                 logger.info("Invalid message (Index Error)")
 
@@ -356,7 +358,7 @@ class LatencyTest:
                 message_length,
             ) = self._show_options()
 
-            print(f"Wait for {wait_time}s and start test ...")
+            logger.info("Wait for %d s and start test ...", wait_time)
             time.sleep(wait_time)
 
             # Run the test with user-defined parameters

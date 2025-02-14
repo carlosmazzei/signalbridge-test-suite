@@ -238,8 +238,8 @@ class StatusMode:
 
     def _display_statistics_status(self) -> None:
         """Display statistics status."""
-        print("\nStatistics Status:")
-        error_data = []
+        print("Statistics Status:")
+        statistics_data = []
         for index in self.error_items:
             item = self.error_items[index]
             last_updated = "N/A"
@@ -248,18 +248,42 @@ class StatusMode:
                     item.last_updated,
                     tz=datetime.UTC,
                 ).strftime("%Y-%m-%d %H:%M:%S")
-            error_data.append([item.message, item.value, last_updated])
+            statistics_data.append([item.message, f"{item.value:,}", last_updated])
 
+        print("Statistics Counters:")
         print(
             tabulate(
-                error_data,
-                headers=["Error", "Value", "Last Updated"],
+                statistics_data,
+                headers=["Counter", "Value", "Last Updated"],
                 tablefmt="simple_grid",
             )
         )
 
-        print(f"Total bytes sent: {self.ser.bytes_sent:,.0f}")
-        print(f"Total bytes received: {self.ser.bytes_received:,.0f}")
+        print("\nCommands Sent Stastitics:")
+        print(
+            tabulate(
+                [
+                    [SerialCommand(k).name, f"{v:,}"]
+                    for k, v in self.ser.statistics.commands_sent.items()
+                ],
+                headers=["Command", "Count"],
+                tablefmt="simple_grid",
+            )
+        )
+        print(f"Total bytes sent: {self.ser.statistics.bytes_sent:,.0f}")
+
+        print("\nCommands Received Stastitics:")
+        print(
+            tabulate(
+                [
+                    [SerialCommand(k).name, f"{v:,}"]
+                    for k, v in self.ser.statistics.commands_received.items()
+                ],
+                headers=["Command", "Count"],
+                tablefmt="simple_grid",
+            )
+        )
+        print(f"Total bytes received: {self.ser.statistics.bytes_received:,.0f}")
 
     def format_time_from_microseconds(self, microseconds: int) -> str:
         """Format time from microseconds."""

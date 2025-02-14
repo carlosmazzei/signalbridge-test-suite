@@ -3,6 +3,7 @@
 import logging
 import queue
 import threading
+from collections import defaultdict
 from collections.abc import Callable
 from enum import Enum
 
@@ -27,6 +28,17 @@ class SerialCommand(Enum):
     TASK_STATUS_COMMAND = 24
 
 
+class SerialStatistics:
+    """Serial interface statistics."""
+
+    def __init__(self) -> None:
+        """Initialize statistics."""
+        self.bytes_received = 0
+        self.bytes_sent = 0
+        self.commands_sent: dict[int, int] = defaultdict(int)
+        self.commands_received: dict[int, int] = defaultdict(int)
+
+
 class SerialInterface:
     """Interface to communicate with serial port."""
 
@@ -42,14 +54,13 @@ class SerialInterface:
         self.ser = None
         self.stop_event = threading.Event()
         self.message_handler: Callable[[int, bytes, bytes], None] | None = None
-        self.bytes_sent: int = 0
-        self.bytes_received: int = 0
         self.message_queue = queue.Queue()
         self.read_thread = threading.Thread(target=self._read_data)
         self.processing_thread = threading.Thread(target=self._process_messages)
         self.read_thread.daemon = True
         self.processing_thread.daemon = True
         self.buffer = bytearray()
+        self.statistics: SerialStatistics = SerialStatistics()
 
     def open(self) -> bool:
         """Open serial port."""
@@ -101,16 +112,21 @@ class SerialInterface:
 
     def write(self, data: bytes) -> None:
         """Calculate the checksum and append it to the payload."""
-        if self.ser:
-            if not self.stop_event.is_set():
-                checksum = calculate_checksum(data)
-                payload_with_checksum = data + checksum
-                message = cobs.encode(payload_with_checksum) + b"\x00"
-                bytes_writen = self.ser.write(message) or 0
-                self.bytes_sent += bytes_writen
-                logger.info("Published (encoded) `%s`", message)
-        else:
-            logger.info("Serial port not open")
+        try:
+            if self.ser:
+                if not self.stop_event.is_set():
+                    checksum = calculate_checksum(data)
+                    payload_with_checksum = data + checksum
+                    message = cobs.encode(payload_with_checksum) + b"\x00"
+                    bytes_writen = self.ser.write(message) or 0
+                    self.statistics.bytes_sent += bytes_writen
+                    command: int = data[1] & 0x1F
+                    self.statistics.commands_sent[command] += 1
+                    logger.info("Published (encoded) `%s`", message)
+            else:
+                logger.info("Serial port not open")
+        except IndexError:
+            logger.exception("Error processing message to send")
 
     def is_open(self) -> bool:
         """Check if connection is open."""
@@ -141,14 +157,16 @@ class SerialInterface:
         try:
             decoded_data: bytes = cobs.decode(byte_string)
             command: int = decoded_data[1] & 0x1F
+            # Add a counter of commands
+            self.statistics.commands_received[command] += 1
             if self.message_handler:
                 self.message_handler(command, decoded_data, byte_string)
         except (IndexError, cobs.DecodeError):
-            logger.exception("Error processing message: %s")
+            logger.exception("Error processing message")
 
     def _handle_received_data(self, data: bytes, max_message_size: int) -> None:
         """Handle received data and put complete messages in the queue."""
-        self.bytes_received += len(data)
+        self.statistics.bytes_received += len(data)
 
         # Update RTS based on buffer size
         if self.ser:
