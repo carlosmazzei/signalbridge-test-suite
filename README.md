@@ -1,8 +1,10 @@
 
+<!-- markdownlint-disable MD033 MD041 -->
 <div align="center">
 <img src="https://github.com/carlosmazzei/signalbridge-controller/blob/main/assets/logo-pimatrix-dark.png#gh-dark-mode-only" alt="Signalbridge" width="150">
 <img src="https://github.com/carlosmazzei/signalbridge-controller/blob/main/assets/logo-pimatrix-light.png#gh-light-mode-only" alt="Signalbridge" width="150">
 </div>
+<!-- markdownlint-enable MD033 MD041 -->
 
 # SignalBridge - Test Suite
 
