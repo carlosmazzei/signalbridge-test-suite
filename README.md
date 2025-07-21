@@ -1,8 +1,24 @@
-# UART Test Routines
 
-[![Tests](https://github.com/carlosmazzei/uart-latency-test/actions/workflows/lint.yml/badge.svg)](https://github.com/carlosmazzei/uart-latency-test/actions/workflows/lint.yml)
+<div align="center">
+<img src="https://github.com/carlosmazzei/signalbridge-controller/blob/main/assets/logo-pimatrix-dark.png#gh-dark-mode-only" alt="Signalbridge" width="150">
+<img src="https://github.com/carlosmazzei/signalbridge-controller/blob/main/assets/logo-pimatrix-light.png#gh-light-mode-only" alt="Signalbridge" width="150">
+</div>
 
-This project includes UART testing tools for the simulator interface, featuring a latency test, command interface, regression testing, and result visualization.
+# SignalBridge - Test Suite
+
+[![Tests](https://github.com/carlosmazzei/signalbridge-test-suite/actions/workflows/lint.yml/badge.svg)](https://github.com/carlosmazzei/signalbridge-test-suite/actions/workflows/lint.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+This project includes SignalBridge testing tools for the controller, featuring a latency test, command interface, regression testing, and result visualization.
+
+> [!TIP]
+> This firmware is designed for the Raspberry Pi Pico.
+
+Related repos:
+
+- [Signalbridge breakout board](https://github.com/carlosmazzei/signalbridge-board)
+- [Signalbridge test suite](https://github.com/carlosmazzei/signalbridge-test-suite) (This repo)
+- [Signalbridge firmware](https://github.com/carlosmazzei/signalbridge-controller)
 
 ## Features
 
@@ -20,8 +36,8 @@ This project includes UART testing tools for the simulator interface, featuring 
 2. **Clone the Repository:**
 
    ```sh
-   git clone https://github.com/carlosmazzei/uart-latency-test.git
-   cd uart-latency-test
+   git clone https://github.com/carlosmazzei/signalbridge-test-suite.git
+   cd signalbridge-test-suite
    ```
 
 3. **Create and Activate a Virtual Environment:**
@@ -130,4 +146,4 @@ app_manager.run_latency_test(num_times=10, max_wait=0.5, min_wait=0, samples=255
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GPL v3 License - see the [LICENSE](LICENSE) file for details.
