@@ -26,6 +26,7 @@ Related repos:
 - Simple interface to send custom commands
 - Regression testing capabilities
 - Visualization of test results
+- Status mode to monitor system state
 - Extensible architecture for adding new test modes
 
 ## Project Setup
@@ -102,6 +103,10 @@ Runs a series of predefined tests to ensure system stability and performance.
 ### 4. Visualize Test Results
 
 This option allows you to visualize the test results using matplotlib. You can select a test file from the list and view the latency and dropped messages statistics in a graphical format.
+
+### 5. Status Mode
+
+This option allows you to monitor the system state and performance. Get information about the heap and the processor usage.
 
 ## Configuration
 
