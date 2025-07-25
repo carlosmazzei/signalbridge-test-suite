@@ -1,6 +1,6 @@
 cobs==1.2.2
 pyserial==3.5
-alive-progress==3.2.0
+alive-progress==3.3.0
 pre-commit==4.2.0
 ruff==0.12.4
 numpy>=2.2.1
