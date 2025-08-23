@@ -92,9 +92,18 @@ class SerialInterface:
 
         # Only attempt to join if we're not in the read thread
         current_thread = threading.current_thread()
-        if self.read_thread and current_thread != self.read_thread:
+        if (
+            self.read_thread
+            and self.read_thread.is_alive()
+            and current_thread != self.read_thread
+        ):
             self.read_thread.join()
-        if self.processing_thread and current_thread != self.processing_thread:
+
+        if (
+            self.processing_thread
+            and self.processing_thread.is_alive()
+            and current_thread != self.processing_thread
+        ):
             self.processing_thread.join()
 
         if self.ser:
