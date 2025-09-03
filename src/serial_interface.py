@@ -101,6 +101,15 @@ class SerialInterface:
             self.ser.close()
             logger.info("Serial port closed")
 
+        # Prepare for potential reconnection
+        self.stop_event = threading.Event()
+        self.read_thread = threading.Thread(target=self._read_data)
+        self.processing_thread = threading.Thread(target=self._process_messages)
+        self.read_thread.daemon = True
+        self.processing_thread.daemon = True
+        self.message_queue = queue.Queue()
+        self.buffer = bytearray()
+
     def send_command(self, hex_data: str) -> None:
         """Send command."""
         if len(hex_data) % 2 != 0:

@@ -58,6 +58,7 @@ def test_initialize_success(
     }
     mock_serial.set_message_handler.assert_called_once()
     mock_serial.start_reading.assert_called_once()
+    app_manager.cleanup()
 
 
 def test_initialize_failure(
@@ -70,12 +71,48 @@ def test_initialize_failure(
     assert app_manager.available_modes == {Mode.VISUALIZE}
     mock_serial.set_message_handler.assert_not_called()
     mock_serial.start_reading.assert_not_called()
+    app_manager.cleanup()
 
 
 def test_cleanup(app_manager: ApplicationManager, mock_serial: SerialInterface) -> None:
     """Test cleanup method."""
     app_manager.cleanup()
     mock_serial.close.assert_called_once()
+
+
+def test_monitor_attempts_reconnect(app_manager: ApplicationManager) -> None:
+    """Ensure monitor thread tries to reconnect when disconnected."""
+    app_manager.connected = False
+    app_manager.monitor_stop_event.clear()
+    with (
+        patch.object(
+            app_manager, "connect_serial", return_value=True
+        ) as mock_connect,
+        patch(
+            "src.application_manager.time.sleep",
+            side_effect=lambda _: app_manager.monitor_stop_event.set(),
+        ),
+    ):
+        app_manager._monitor_connection()
+    mock_connect.assert_called_once()
+
+
+def test_monitor_detects_disconnect(
+    app_manager: ApplicationManager, mock_serial: SerialInterface
+) -> None:
+    """Ensure monitor thread handles disconnection events."""
+    app_manager.connected = True
+    mock_serial.is_open.return_value = False
+    app_manager.monitor_stop_event.clear()
+    with (
+        patch.object(app_manager, "disconnect_serial") as mock_disconnect,
+        patch(
+            "src.application_manager.time.sleep",
+            side_effect=lambda _: app_manager.monitor_stop_event.set(),
+        ),
+    ):
+        app_manager._monitor_connection()
+    mock_disconnect.assert_called_once()
 
 
 def test_handle_message_latency_mode(app_manager: ApplicationManager) -> None:
@@ -176,6 +213,7 @@ def test_display_menu_all_modes(
         Mode.VISUALIZE,
         Mode.STATUS,
     }
+    app_manager.connected = True
 
     app_manager.display_menu()
     captured = capsys.readouterr()
@@ -213,6 +251,7 @@ def test_display_menu_some_modes(
 ) -> None:
     """Test display_menu with a subset of modes available."""
     app_manager.available_modes = {Mode.LATENCY, Mode.VISUALIZE}
+    app_manager.connected = True
 
     app_manager.display_menu()
     captured = capsys.readouterr()

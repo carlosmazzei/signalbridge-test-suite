@@ -2,6 +2,8 @@
 
 import logging
 import os
+import threading
+import time
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -63,6 +65,9 @@ class ApplicationManager:
         self.mode: Mode = Mode.IDLE
         self.available_modes = {Mode.VISUALIZE}
         self.visualize_results: VisualizeResults | None = None
+        self.connected = False
+        self.monitor_thread: threading.Thread | None = None
+        self.monitor_stop_event = threading.Event()
 
     def initialize(self) -> bool:
         """
@@ -74,6 +79,16 @@ class ApplicationManager:
 
         """
         self.visualize_results = VisualizeResults()
+        result = self.connect_serial()
+        self.monitor_stop_event.clear()
+        self.monitor_thread = threading.Thread(
+            target=self._monitor_connection, daemon=True
+        )
+        self.monitor_thread.start()
+        return result
+
+    def connect_serial(self) -> bool:
+        """Open the serial interface and initialize serial-dependent features."""
         if self.serial_interface.open():
             self.serial_interface.set_message_handler(self.handle_message)
             self.serial_interface.start_reading()
@@ -83,13 +98,37 @@ class ApplicationManager:
             self.available_modes.update(
                 [Mode.LATENCY, Mode.COMMAND, Mode.REGRESSION, Mode.STATUS]
             )
+            self.connected = True
             logger.info("Serial interface opened successfully.")
-        else:
-            logger.error(
-                "Failed to open serial interface. Some features will be disabled.",
-            )
-            return False
-        return True
+            return True
+        logger.error(
+            "Failed to open serial interface. Some features will be disabled.",
+        )
+        self.connected = False
+        return False
+
+    def disconnect_serial(self) -> None:
+        """Disconnect the serial interface and disable related features."""
+        if self.serial_interface.is_open():
+            self.serial_interface.close()
+        self.latency_test = None
+        self.command_mode = None
+        self.regression_test = None
+        self.status_mode = None
+        self.available_modes = {Mode.VISUALIZE}
+        self.mode = Mode.IDLE
+        self.connected = False
+
+    def _monitor_connection(self) -> None:
+        """Background thread that monitors the serial connection."""
+        while not self.monitor_stop_event.is_set():
+            if self.connected:
+                if not self.serial_interface.is_open():
+                    logger.warning("Serial interface disconnected.")
+                    self.disconnect_serial()
+            else:
+                self.connect_serial()
+            time.sleep(0.5)
 
     def handle_message(
         self,
@@ -166,7 +205,10 @@ class ApplicationManager:
     def cleanup(self) -> None:
         """Cleanup resources and close serial interface."""
         logger.info("Stopping read thread and closing serial port...")
-        self.serial_interface.close()
+        self.monitor_stop_event.set()
+        if self.monitor_thread and self.monitor_thread.is_alive():
+            self.monitor_thread.join()
+        self.disconnect_serial()
 
     def display_menu(self) -> None:
         """Display the menu of available options."""
