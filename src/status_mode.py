@@ -70,6 +70,7 @@ class StatusMode:
         ADC_TASK_NAME = "ADC read"
         KEY_TASK_NAME = "Key read"
         ENCODER_TASK_NAME = "Encoder read"
+        LED_STATUS_TASK_NAME = "LED status"
 
     class TaskIndex(IntEnum):
         """Definitions of task indexes."""
@@ -82,7 +83,8 @@ class StatusMode:
         ADC_READ_TASK_INDEX = 5
         KEYPAD_TASK_INDEX = 6
         ENCODER_READ_TASK_INDEX = 7
-        IDLE_TASK_INDEX = 8
+        LED_STATUS_TASK = 8
+        IDLE_TASK_INDEX = 9
 
     def __init__(self, ser: SerialInterface) -> None:
         """Initialize status mode class."""
@@ -146,6 +148,9 @@ class StatusMode:
             ),
             self.TaskIndex.ENCODER_READ_TASK_INDEX: TaskItem(
                 name=self.TaskNames.ENCODER_TASK_NAME
+            ),
+            self.TaskIndex.LED_STATUS_TASK: TaskItem(
+                name=self.TaskNames.LED_STATUS_TASK_NAME
             ),
         }
 

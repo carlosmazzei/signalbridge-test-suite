@@ -22,6 +22,7 @@ class SerialCommand(Enum):
     """Command enum."""
 
     ECHO_COMMAND = 20
+    PC_DSPCTL_COMMAND = 10
     KEY_COMMAND = 4
     ANALOG_COMMAND = 3
     STATISTICS_STATUS_COMMAND = 23
