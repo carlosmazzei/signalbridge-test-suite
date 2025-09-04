@@ -21,9 +21,10 @@ def mock_serial() -> Generator[Any, None, None]:
 
 @pytest.fixture
 def app_manager(
-    mock_serial: Generator[Any, None, None],  # noqa: ARG001
+    mock_serial: Generator[Any, None, None],
 ) -> ApplicationManager:
     """Fixture for ApplicationManager instance."""
+    _ = mock_serial
     return ApplicationManager("COM1", 115200, 1.0)
 
 
@@ -58,6 +59,7 @@ def test_initialize_success(
     }
     mock_serial.set_message_handler.assert_called_once()
     mock_serial.start_reading.assert_called_once()
+    app_manager.cleanup()
 
 
 def test_initialize_failure(
@@ -70,6 +72,7 @@ def test_initialize_failure(
     assert app_manager.available_modes == {Mode.VISUALIZE}
     mock_serial.set_message_handler.assert_not_called()
     mock_serial.start_reading.assert_not_called()
+    app_manager.cleanup()
 
 
 def test_cleanup(app_manager: ApplicationManager, mock_serial: SerialInterface) -> None:
@@ -176,11 +179,13 @@ def test_display_menu_all_modes(
         Mode.VISUALIZE,
         Mode.STATUS,
     }
+    app_manager.connected = True
 
     app_manager.display_menu()
     captured = capsys.readouterr()
 
     assert "Available options:" in captured.out
+    assert "0. Disconnect from device" in captured.out
     assert "1. Run latency test" in captured.out
     assert "2. Send command" in captured.out
     assert "3. Regression test" in captured.out
@@ -200,6 +205,7 @@ def test_display_menu_no_modes(
     captured = capsys.readouterr()
 
     assert "Available options:" in captured.out
+    assert "0. Connect to device" in captured.out
     assert "1. Run latency test" not in captured.out
     assert "2. Send command" not in captured.out
     assert "3. Regression test" not in captured.out
@@ -213,11 +219,13 @@ def test_display_menu_some_modes(
 ) -> None:
     """Test display_menu with a subset of modes available."""
     app_manager.available_modes = {Mode.LATENCY, Mode.VISUALIZE}
+    app_manager.connected = True
 
     app_manager.display_menu()
     captured = capsys.readouterr()
 
     assert "Available options:" in captured.out
+    assert "0. Disconnect from device" in captured.out
     assert "1. Run latency test" in captured.out
     assert "2. Send command" not in captured.out
     assert "3. Regression test" not in captured.out
