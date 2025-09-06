@@ -1,7 +1,6 @@
 """Application Manager module."""
 
 import logging
-import os
 import threading
 import time
 from enum import Enum
@@ -228,25 +227,40 @@ class ApplicationManager:
 
     def _handle_user_choice(self, choice: str) -> bool:
         """Handle user choice and return whether to continue the loop."""
-        if choice == "0":
+
+        def handle_connect_disconnect() -> None:
             if self.connected:
                 self.disconnect_serial()
             else:
                 self.connect_serial()
-        elif choice == "1" and Mode.LATENCY in self.available_modes:
-            os.system("clear")  # noqa: S605, S607
-            self.run_latency_test()
-        elif choice == "2" and Mode.COMMAND in self.available_modes:
-            self.run_command_mode()
-        elif choice == "3" and Mode.REGRESSION in self.available_modes:
-            self.run_regression_test()
-        elif choice == "4" and Mode.VISUALIZE in self.available_modes:
-            self.run_visualization()
-        elif choice == "5" and Mode.STATUS in self.available_modes:
-            self.run_status_mode()
-        elif choice == "6":
+
+        handlers = {
+            "0": handle_connect_disconnect,
+            "1": lambda: self.run_latency_test()
+            if Mode.LATENCY in self.available_modes
+            else None,
+            "2": lambda: self.run_command_mode()
+            if Mode.COMMAND in self.available_modes
+            else None,
+            "3": lambda: self.run_regression_test()
+            if Mode.REGRESSION in self.available_modes
+            else None,
+            "4": lambda: self.run_visualization()
+            if Mode.VISUALIZE in self.available_modes
+            else None,
+            "5": lambda: self.run_status_mode()
+            if Mode.STATUS in self.available_modes
+            else None,
+        }
+
+        if choice == "6":
             logger.info("Exiting...")
             return False
+        handler = handlers.get(choice)
+        if handler:
+            result = handler()
+            if result is None and choice != "0":  # "0" is always available
+                logger.info("Invalid choice or option not available\n")
         else:
             logger.info("Invalid choice or option not available\n")
         return True

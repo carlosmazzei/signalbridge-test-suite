@@ -185,6 +185,7 @@ class VisualizeResults:
                 figsize=(10, 8),
                 gridspec_kw={"height_ratios": [2, 1]},
                 sharex=True,
+                constrained_layout=True,
             )
 
             fig.suptitle(f"Test Results Visualization (jitter = {jitter})", fontsize=12)
@@ -253,7 +254,6 @@ class VisualizeResults:
             ax2.grid(axis="y", linestyle="--", alpha=0.7)
             plt.setp(ax2.get_xticklabels(), rotation=45, ha="right")
 
-            plt.tight_layout()
             plt.show()
 
         except Exception:
