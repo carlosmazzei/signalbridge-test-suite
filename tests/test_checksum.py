@@ -1,6 +1,6 @@
 """Tests for the checksum module."""
 
-from src.checksum import calculate_checksum
+from checksum import calculate_checksum
 
 
 def test_empty_data() -> None:
