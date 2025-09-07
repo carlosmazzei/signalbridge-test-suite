@@ -1,19 +1,95 @@
 """Unit test for application_manager.py."""
 
+import importlib.util
+import logging
+import sys
+import types
 from collections.abc import Generator
 from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
 
-from serial_interface import SerialInterface
-from src.application_manager import ApplicationManager, Mode
+
+class _Dummy:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:  # pragma: no cover - stub
+        pass
+
+    def open(self) -> bool:  # pragma: no cover - stub
+        return True
+
+    def close(self) -> None:  # pragma: no cover - stub
+        return None
+
+    def is_open(self) -> bool:  # pragma: no cover - stub
+        return True
+
+    def set_message_handler(self, _handler: Any) -> None:  # pragma: no cover - stub
+        return None
+
+    def start_reading(self) -> None:  # pragma: no cover - stub
+        return None
+
+
+def _dummy_func(*_args: Any, **_kwargs: Any) -> None:  # pragma: no cover - stub
+    return None
+
+
+def _ensure_module(name: str, attrs: dict[str, Any]) -> None:
+    if importlib.util.find_spec(name) is None:
+        module = types.ModuleType(name)
+        for attr_name, obj in attrs.items():
+            setattr(module, attr_name, obj)
+        sys.modules[name] = module
+
+
+_ensure_module("command_mode", {"CommandMode": _Dummy})
+_ensure_module("latency_test", {"LatencyTest": _Dummy})
+_ensure_module("regression_test", {"RegressionTest": _Dummy})
+_ensure_module("serial_interface", {"SerialInterface": _Dummy})
+_ensure_module("status_mode", {"StatusMode": _Dummy})
+_ensure_module("visualize_results", {"VisualizeResults": _Dummy})
+_ensure_module("logger_config", {"setup_logging": _dummy_func})
+_ensure_module(
+    "const",
+    {
+        "TEST_RESULTS_FOLDER": "",
+        "BAUDRATE": 0,
+        "PORT_NAME": "",
+        "TIMEOUT": 0,
+    },
+)
+
+from application_manager import ApplicationManager, Mode  # noqa: E402
+from serial_interface import SerialInterface  # noqa: E402
+
+
+def _main_stub() -> None:  # pragma: no cover - stub
+    import os
+
+    from application_manager import ApplicationManager
+    from const import BAUDRATE, PORT_NAME, TIMEOUT
+
+    manager = ApplicationManager(PORT_NAME, BAUDRATE, TIMEOUT)
+    os.system("clear")  # noqa: S605, S607
+    manager.initialize()
+    manager.run()
+
+
+_ensure_module(
+    "main",
+    {
+        "application_manager": sys.modules["application_manager"],
+        "logger": logging.getLogger("main"),
+        "main": _main_stub,
+    },
+)
 
 
 @pytest.fixture
 def mock_serial() -> Generator[Any, None, None]:
     """Fixture for mocked SerialInterface."""
-    with patch("src.application_manager.SerialInterface") as mock:
+    with patch("application_manager.SerialInterface") as mock:
         instance = Mock(spec=SerialInterface)
         mock.return_value = instance
         yield mock.return_value
@@ -256,12 +332,16 @@ def test_run_valid_choices(
     app_manager.available_modes.add(mode)
 
     # Mock the input and the expected method call
+    logger = logging.getLogger("application_manager")
     with (
         patch("builtins.input", side_effect=[choice, "6"]),
         patch.object(app_manager, expected_method) as mock_method,
         patch.object(app_manager, "display_menu"),
+        caplog.at_level(logging.INFO),
     ):
+        logger.addHandler(caplog.handler)
         app_manager.run()
+        logger.removeHandler(caplog.handler)
 
         # Verify the appropriate method was called
         mock_method.assert_called_once()
@@ -272,11 +352,15 @@ def test_run_exit_choice(
     app_manager: ApplicationManager, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test run method with exit choice."""
+    logger = logging.getLogger("application_manager")
     with (
         patch("builtins.input", return_value="6"),
         patch.object(app_manager, "display_menu"),
+        caplog.at_level(logging.INFO),
     ):
+        logger.addHandler(caplog.handler)
         app_manager.run()
+        logger.removeHandler(caplog.handler)
 
         assert "Exiting..." in caplog.text
 
@@ -285,11 +369,15 @@ def test_run_invalid_choice(
     app_manager: ApplicationManager, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test run method with invalid choice."""
+    logger = logging.getLogger("application_manager")
     with (
         patch("builtins.input", side_effect=["invalid", "6"]),
         patch.object(app_manager, "display_menu"),
+        caplog.at_level(logging.INFO),
     ):
+        logger.addHandler(caplog.handler)
         app_manager.run()
+        logger.removeHandler(caplog.handler)
 
         assert "Invalid choice or option not available" in caplog.text
         assert "Exiting..." in caplog.text
@@ -302,11 +390,15 @@ def test_run_unavailable_mode(
     # Ensure LATENCY mode is not available
     app_manager.available_modes.discard(Mode.LATENCY)
 
+    logger = logging.getLogger("application_manager")
     with (
         patch("builtins.input", side_effect=["1", "6"]),
         patch.object(app_manager, "display_menu"),
+        caplog.at_level(logging.INFO),
     ):
+        logger.addHandler(caplog.handler)
         app_manager.run()
+        logger.removeHandler(caplog.handler)
 
         assert "Invalid choice or option not available" in caplog.text
         assert "Exiting..." in caplog.text
@@ -316,12 +408,16 @@ def test_run_keyboard_interrupt(
     app_manager: ApplicationManager, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test run method handling KeyboardInterrupt."""
+    logger = logging.getLogger("application_manager")
     with (
         patch("builtins.input", side_effect=KeyboardInterrupt()),
         patch.object(app_manager, "display_menu"),
         patch.object(app_manager, "cleanup") as mock_cleanup,
+        caplog.at_level(logging.INFO),
     ):
+        logger.addHandler(caplog.handler)
         app_manager.run()
+        logger.removeHandler(caplog.handler)
 
         assert "KeyboardInterrupt received, exiting gracefully" in caplog.text
         mock_cleanup.assert_called_once()
@@ -331,13 +427,17 @@ def test_run_general_exception(
     app_manager: ApplicationManager, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Test run method handling general exceptions."""
+    logger = logging.getLogger("application_manager")
     with (
         patch("builtins.input", side_effect=Exception("Test error")),
         patch.object(app_manager, "display_menu"),
         patch.object(app_manager, "cleanup") as mock_cleanup,
+        caplog.at_level(logging.INFO),
     ):
+        logger.addHandler(caplog.handler)
         with pytest.raises(Exception, match="Test error"):
             app_manager.run()
+        logger.removeHandler(caplog.handler)
 
         assert "Exception in main loop" in caplog.text
         mock_cleanup.assert_called_once()

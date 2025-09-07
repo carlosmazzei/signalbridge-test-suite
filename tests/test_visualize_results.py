@@ -7,7 +7,7 @@ from unittest.mock import mock_open, patch
 import numpy as np
 import pytest
 
-from src.visualize_results import VisualizeResults
+from visualize_results import VisualizeResults
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def visualize_results() -> VisualizeResults:
 
 def test_select_test_file_no_files(visualize_results: VisualizeResults) -> None:
     """Test for the select_test_file method when no files are found."""
-    with patch("src.visualize_results.Path.glob", return_value=[]):
+    with patch("visualize_results.Path.glob", return_value=[]):
         result = visualize_results.select_test_file()
         assert result is None
 
@@ -27,7 +27,7 @@ def test_select_test_file_with_files(visualize_results: VisualizeResults) -> Non
     """Test for the select_test_file method when files are found."""
     mock_files = [Path(f"test_{i}.json") for i in range(15)]
     with (
-        patch("src.visualize_results.Path.glob", return_value=mock_files),
+        patch("visualize_results.Path.glob", return_value=mock_files),
         patch("builtins.input", side_effect=["1", "q"]),
     ):
         result = visualize_results.select_test_file()
@@ -86,7 +86,7 @@ def test_plot_boxplot(visualize_results: VisualizeResults) -> None:
 def test_get_test_files(visualize_results: VisualizeResults) -> None:
     """Test for the _get_test_files method."""
     mock_files = [Path(f"test_{i}.json") for i in range(5)]
-    with patch("src.visualize_results.Path.glob", return_value=mock_files):
+    with patch("visualize_results.Path.glob", return_value=mock_files):
         files = visualize_results._get_test_files()
         assert files == mock_files
 
