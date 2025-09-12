@@ -3,6 +3,8 @@
 import logging
 import threading
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -30,6 +32,16 @@ class Mode(Enum):
     REGRESSION = 3
     VISUALIZE = 4
     STATUS = 5
+
+
+@dataclass
+class MenuItem:
+    """Representation of a menu item."""
+
+    key: str
+    description: Callable[[], str]
+    action: Callable[[], bool]
+    condition: Callable[[], bool] = lambda: True
 
 
 class ApplicationManager:
@@ -67,6 +79,46 @@ class ApplicationManager:
         self.connected = False
         self.monitor_thread: threading.Thread | None = None
         self.monitor_stop_event = threading.Event()
+        self.menu_items: list[MenuItem] = [
+            MenuItem(
+                "0",
+                lambda: "Disconnect from device"
+                if self.connected
+                else "Connect to device",
+                self._toggle_connection,
+            ),
+            MenuItem(
+                "1",
+                lambda: "Run latency test",
+                self._create_action("run_latency_test"),
+                lambda: Mode.LATENCY in self.available_modes,
+            ),
+            MenuItem(
+                "2",
+                lambda: "Send command",
+                self._create_action("run_command_mode"),
+                lambda: Mode.COMMAND in self.available_modes,
+            ),
+            MenuItem(
+                "3",
+                lambda: "Regression test",
+                self._create_action("run_regression_test"),
+                lambda: Mode.REGRESSION in self.available_modes,
+            ),
+            MenuItem(
+                "4",
+                lambda: "Visualize test results",
+                self._create_action("run_visualization"),
+                lambda: Mode.VISUALIZE in self.available_modes,
+            ),
+            MenuItem(
+                "5",
+                lambda: "Status mode",
+                self._create_action("run_status_mode"),
+                lambda: Mode.STATUS in self.available_modes,
+            ),
+            MenuItem("6", lambda: "Exit", self._exit),
+        ]
 
     def initialize(self) -> bool:
         """
@@ -125,6 +177,28 @@ class ApplicationManager:
                 logger.warning("Serial interface disconnected.")
                 self.disconnect_serial()
             time.sleep(0.5)
+
+    def _toggle_connection(self) -> bool:
+        """Toggle the connection state."""
+        if self.connected:
+            self.disconnect_serial()
+        else:
+            self.connect_serial()
+        return True
+
+    def _create_action(self, method_name: str) -> Callable[[], bool]:
+        """Create an action that calls a method and continues."""
+
+        def action() -> bool:
+            getattr(self, method_name)()
+            return True
+
+        return action
+
+    def _exit(self) -> bool:
+        """Handle exiting the application."""
+        logger.info("Exiting...")
+        return False
 
     def handle_message(
         self,
@@ -209,60 +283,19 @@ class ApplicationManager:
     def display_menu(self) -> None:
         """Display the menu of available options."""
         print("\nAvailable options:")
-        if self.connected:
-            print("0. Disconnect from device")
-        else:
-            print("0. Connect to device")
-        if Mode.LATENCY in self.available_modes:
-            print("1. Run latency test")
-        if Mode.COMMAND in self.available_modes:
-            print("2. Send command")
-        if Mode.REGRESSION in self.available_modes:
-            print("3. Regression test")
-        if Mode.VISUALIZE in self.available_modes:
-            print("4. Visualize test results")
-        if Mode.STATUS in self.available_modes:
-            print("5. Status mode")
-        print("6. Exit")
+        for item in self.menu_items:
+            if item.condition():
+                print(f"{item.key}. {item.description()}")
 
     def _handle_user_choice(self, choice: str) -> bool:
         """Handle user choice and return whether to continue the loop."""
-
-        def handle_connect_disconnect() -> None:
-            if self.connected:
-                self.disconnect_serial()
-            else:
-                self.connect_serial()
-
-        handlers = {
-            "0": handle_connect_disconnect,
-            "1": lambda: self.run_latency_test()
-            if Mode.LATENCY in self.available_modes
-            else None,
-            "2": lambda: self.run_command_mode()
-            if Mode.COMMAND in self.available_modes
-            else None,
-            "3": lambda: self.run_regression_test()
-            if Mode.REGRESSION in self.available_modes
-            else None,
-            "4": lambda: self.run_visualization()
-            if Mode.VISUALIZE in self.available_modes
-            else None,
-            "5": lambda: self.run_status_mode()
-            if Mode.STATUS in self.available_modes
-            else None,
-        }
-
-        if choice == "6":
-            logger.info("Exiting...")
-            return False
-        handler = handlers.get(choice)
-        if handler:
-            result = handler()
-            if result is None and choice != "0":  # "0" is always available
+        for item in self.menu_items:
+            if choice == item.key:
+                if item.condition():
+                    return item.action()
                 logger.info("Invalid choice or option not available\n")
-        else:
-            logger.info("Invalid choice or option not available\n")
+                return True
+        logger.info("Invalid choice or option not available\n")
         return True
 
     def run(self) -> None:
