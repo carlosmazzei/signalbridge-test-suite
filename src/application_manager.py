@@ -64,7 +64,7 @@ class ApplicationManager:
             port, baudrate, timeout
         )
         self.mode: Mode = Mode.IDLE
-        self.connected = False
+        self.connected: bool = False
         self.monitor_thread: threading.Thread | None = None
         self.monitor_stop_event = threading.Event()
         self.modules: dict[Mode, Any] = {}
