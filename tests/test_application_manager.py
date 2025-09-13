@@ -252,3 +252,48 @@ def test_run_cleanup_called(app_manager: ApplicationManager) -> None:
     ):
         app_manager.run()
     mock_cleanup.assert_called_once()
+
+
+def test_toggle_connection_connects(app_manager: ApplicationManager) -> None:
+    """When disconnected, toggling should attempt to connect."""
+    app_manager.connected = False
+    with (
+        patch.object(app_manager, "connect_serial") as mock_connect,
+        patch.object(app_manager, "disconnect_serial") as mock_disconnect,
+    ):
+        assert app_manager._toggle_connection() is True
+    mock_connect.assert_called_once()
+    mock_disconnect.assert_not_called()
+
+
+def test_toggle_connection_disconnects(app_manager: ApplicationManager) -> None:
+    """When connected, toggling should disconnect."""
+    app_manager.connected = True
+    with (
+        patch.object(app_manager, "connect_serial") as mock_connect,
+        patch.object(app_manager, "disconnect_serial") as mock_disconnect,
+    ):
+        assert app_manager._toggle_connection() is True
+    mock_disconnect.assert_called_once()
+    mock_connect.assert_not_called()
+
+
+def test_monitor_connection_triggers_disconnect(
+    app_manager: ApplicationManager,
+    mock_serial: SerialInterface,
+) -> None:
+    """Monitor thread should disconnect if port closes."""
+    import threading
+    import time as _time
+
+    app_manager.connected = True
+    mock_serial.is_open.return_value = False
+
+    with patch.object(app_manager, "disconnect_serial") as mock_disconnect:
+        app_manager.monitor_stop_event.clear()
+        t = threading.Thread(target=app_manager._monitor_connection, daemon=True)
+        t.start()
+        _time.sleep(0.1)
+        app_manager.monitor_stop_event.set()
+        t.join(timeout=1)
+    mock_disconnect.assert_called_once()

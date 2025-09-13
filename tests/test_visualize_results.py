@@ -83,6 +83,16 @@ def test_plot_boxplot(visualize_results: VisualizeResults) -> None:
         mock_show.assert_called_once()
 
 
+def test_plot_histogram(visualize_results: VisualizeResults) -> None:
+    """Test for the plot_histogram method."""
+    test_data = [np.array([0.01, 0.02, 0.03])]
+    labels = ["Test 1"]
+    stats_data = [{"p95": 0.03, "avg": 0.02, "min": 0.01, "max": 0.03}]
+    with patch("matplotlib.pyplot.show") as mock_show:
+        visualize_results.plot_histogram(test_data, labels, stats_data)
+        mock_show.assert_called_once()
+
+
 def test_get_test_files(visualize_results: VisualizeResults) -> None:
     """Test for the _get_test_files method."""
     mock_files = [Path(f"test_{i}.json") for i in range(5)]
