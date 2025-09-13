@@ -18,6 +18,18 @@ except (ImportError, AttributeError):
     # If matplotlib isn't installed or already configured, log the exception
     logger.exception("Could not configure matplotlib backend.")
 
-# Add the src directory to Python's path
-src_path = Path(__file__).parent.parent / "src"
-sys.path.insert(0, str(src_path))
+
+# Add the src directory to Python's path, robust across mutmut's mutants tree
+def _find_src_dir(start: Path, max_up: int = 6) -> Path | None:
+    p = start.resolve()
+    for _ in range(max_up):
+        candidate = p / "src"
+        if candidate.exists():
+            return candidate
+        p = p.parent
+    return None
+
+
+src_dir = _find_src_dir(Path(__file__).parent)
+if src_dir:
+    sys.path.insert(0, str(src_dir))

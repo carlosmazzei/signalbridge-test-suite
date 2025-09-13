@@ -39,6 +39,7 @@ jobs:
       - name: Run mutmut (mutation tests)
         env:
           MPLBACKEND: Agg
+          PYTHONPATH: "${{ github.workspace }}/src"
         run: |
           mutmut run --max-children 1
       - name: Show mutmut results
