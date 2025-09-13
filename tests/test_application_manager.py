@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import threading
+import time as _time
 from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
 
@@ -283,9 +285,6 @@ def test_monitor_connection_triggers_disconnect(
     mock_serial: SerialInterface,
 ) -> None:
     """Monitor thread should disconnect if port closes."""
-    import threading
-    import time as _time
-
     app_manager.connected = True
     mock_serial.is_open.return_value = False
 
