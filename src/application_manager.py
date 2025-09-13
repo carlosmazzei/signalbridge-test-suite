@@ -3,18 +3,18 @@
 import logging
 import threading
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import Any
 
-from command_mode import CommandMode  # New import for refactored command mode
+from command_mode import CommandMode
 from latency_test import LatencyTest
 from logger_config import setup_logging
+from regression_test import RegressionTest
 from serial_interface import SerialInterface
 from status_mode import StatusMode
 from visualize_results import VisualizeResults
-
-if TYPE_CHECKING:
-    from regression_test import RegressionTest
 
 setup_logging()
 
@@ -32,52 +32,129 @@ class Mode(Enum):
     STATUS = 5
 
 
-class ApplicationManager:
-    """
-    Application Manager class.
+@dataclass
+class MenuItem:
+    """Representation of a menu item."""
 
-    This class manages the overall application flow, including initialization,
-    mode switching, and cleanup.
-    """
+    key: str
+    description: Callable[[], str]
+    action: Callable[[], bool]
+    condition: Callable[[], bool] = lambda: True
+
+
+@dataclass
+class ModuleConfig:
+    """Configuration for a module handled by ApplicationManager."""
+
+    key: str
+    mode: Mode
+    description: str
+    builder: Callable[[], Any]
+    runner: Callable[[Any], None]
+    handler: Callable[[Any, int, bytes, bytes], None] | None = None
+    requires_serial: bool = True
+
+
+class ApplicationManager:
+    """Manage the overall application flow and module coordination."""
 
     def __init__(self, port: str, baudrate: int, timeout: float) -> None:
-        """
-        Initialize the application manager.
-
-        Args:
-        ----
-            port (str): The serial port to use.
-            baudrate (int): The baud rate for serial communication.
-            timeout (float): The timeout for serial communication.
-            logger (Logger): The logger instance to use.
-
-        """
+        """Instantiate with serial connection parameters."""
         self.serial_interface: SerialInterface = SerialInterface(
-            port,
-            baudrate,
-            timeout,
+            port, baudrate, timeout
         )
-        self.latency_test: LatencyTest | None = None
-        self.regression_test: RegressionTest | None = None
-        self.command_mode: CommandMode | None = None
-        self.status_mode: StatusMode | None = None
         self.mode: Mode = Mode.IDLE
-        self.available_modes = {Mode.VISUALIZE}
-        self.visualize_results: VisualizeResults | None = None
         self.connected = False
         self.monitor_thread: threading.Thread | None = None
         self.monitor_stop_event = threading.Event()
+        self.modules: dict[Mode, Any] = {}
+
+        self.module_configs: list[ModuleConfig] = [
+            ModuleConfig(
+                key="1",
+                mode=Mode.LATENCY,
+                description="Run latency test",
+                builder=lambda: LatencyTest(self.serial_interface),
+                runner=lambda module: module.execute_test(),
+                handler=lambda module, command, data, _unused: module.handle_message(
+                    command, data
+                ),
+            ),
+            ModuleConfig(
+                key="2",
+                mode=Mode.COMMAND,
+                description="Send command",
+                builder=lambda: CommandMode(self.serial_interface),
+                runner=lambda module: module.execute_command_mode(),
+                handler=lambda module,
+                command,
+                data,
+                byte_string: module.handle_message(command, data, byte_string),
+            ),
+            ModuleConfig(
+                key="3",
+                mode=Mode.REGRESSION,
+                description="Regression test",
+                builder=lambda: RegressionTest(self.serial_interface),
+                runner=lambda module: module.execute_test(),
+                handler=lambda module,
+                command,
+                data,
+                byte_string: module.handle_message(command, data, byte_string),
+            ),
+            ModuleConfig(
+                key="4",
+                mode=Mode.VISUALIZE,
+                description="Visualize test results",
+                builder=lambda: VisualizeResults(),
+                runner=lambda module: module.execute_visualization(),
+                handler=None,
+                requires_serial=False,
+            ),
+            ModuleConfig(
+                key="5",
+                mode=Mode.STATUS,
+                description="Status mode",
+                builder=lambda: StatusMode(self.serial_interface),
+                runner=lambda module: module.execute_test(),
+                handler=lambda module, command, data, _unused: module.handle_message(
+                    command, data
+                ),
+            ),
+        ]
+        self.module_configs_by_mode = {cfg.mode: cfg for cfg in self.module_configs}
+
+        self.menu_items: list[MenuItem] = [
+            MenuItem(
+                "0",
+                lambda: "Disconnect from device"
+                if self.connected
+                else "Connect to device",
+                self._toggle_connection,
+            )
+        ]
+        for cfg in self.module_configs:
+            self.menu_items.append(
+                MenuItem(
+                    cfg.key,
+                    lambda desc=cfg.description: desc,
+                    self._create_module_action(cfg.mode),
+                    lambda cfg=cfg: self._is_module_available(cfg.mode),
+                )
+            )
+        exit_key_int = max(int(cfg.key) for cfg in self.module_configs) + 1
+        self.exit_key = str(exit_key_int)
+        self.menu_items.append(MenuItem(self.exit_key, lambda: "Exit", self._exit))
+
+    def _is_module_available(self, mode: Mode) -> bool:
+        """Check if a module for the given mode is available."""
+        return mode in self.modules
 
     def initialize(self) -> bool:
-        """
-        Initialize serial interface and set up components.
-
-        Returns
-        -------
-            bool: True if initialization was successful, False otherwise.
-
-        """
-        self.visualize_results = VisualizeResults()
+        """Initialize serial interface and set up components."""
+        for cfg in self.module_configs:
+            if not cfg.requires_serial:
+                self.modules[cfg.mode] = cfg.builder()
         result = self.connect_serial()
         self.monitor_stop_event.clear()
         self.monitor_thread = threading.Thread(
@@ -87,34 +164,27 @@ class ApplicationManager:
         return result
 
     def connect_serial(self) -> bool:
-        """Open the serial interface and initialize serial-dependent features."""
+        """Open the serial interface and initialize serial-dependent modules."""
         if self.serial_interface.open():
             self.serial_interface.set_message_handler(self.handle_message)
             self.serial_interface.start_reading()
-            self.latency_test = LatencyTest(self.serial_interface)
-            self.command_mode = CommandMode(self.serial_interface)
-            self.status_mode = StatusMode(self.serial_interface)
-            self.available_modes.update(
-                [Mode.LATENCY, Mode.COMMAND, Mode.REGRESSION, Mode.STATUS]
-            )
+            for cfg in self.module_configs:
+                if cfg.requires_serial:
+                    self.modules[cfg.mode] = cfg.builder()
             self.connected = True
             logger.info("Serial interface opened successfully.")
             return True
-        logger.error(
-            "Failed to open serial interface. Some features will be disabled.",
-        )
+        logger.error("Failed to open serial interface. Some features will be disabled.")
         self.connected = False
         return False
 
     def disconnect_serial(self) -> None:
-        """Disconnect the serial interface and disable related features."""
+        """Disconnect the serial interface and disable related modules."""
         if self.serial_interface.is_open():
             self.serial_interface.close()
-        self.latency_test = None
-        self.command_mode = None
-        self.regression_test = None
-        self.status_mode = None
-        self.available_modes = {Mode.VISUALIZE}
+        for cfg in self.module_configs:
+            if cfg.requires_serial:
+                self.modules.pop(cfg.mode, None)
         self.mode = Mode.IDLE
         self.connected = False
 
@@ -126,77 +196,47 @@ class ApplicationManager:
                 self.disconnect_serial()
             time.sleep(0.5)
 
+    def _toggle_connection(self) -> bool:
+        """Toggle the connection state."""
+        if self.connected:
+            self.disconnect_serial()
+        else:
+            self.connect_serial()
+        return True
+
+    def _create_module_action(self, mode: Mode) -> Callable[[], bool]:
+        """Create a menu action for the given mode."""
+
+        def action() -> bool:
+            module = self.modules.get(mode)
+            if module:
+                self.mode = mode
+                cfg = self.module_configs_by_mode[mode]
+                cfg.runner(module)
+            else:
+                logger.info(
+                    "%s mode is not available. Serial interface is not connected.",
+                    mode.name.title(),
+                )
+            return True
+
+        return action
+
+    def _exit(self) -> bool:
+        """Handle exiting the application."""
+        logger.info("Exiting...")
+        return False
+
     def handle_message(
-        self,
-        command: int,
-        decoded_data: bytes,
-        byte_string: bytes,
+        self, command: int, decoded_data: bytes, byte_string: bytes
     ) -> None:
-        """
-        Handle incoming messages based on the current mode.
-
-        Args:
-        ----
-            command (int): The command received.
-            decoded_data (bytes): The decoded data received.
-            byte_string (bytes): The raw byte string received.
-
-        """
-        if self.mode == Mode.LATENCY and self.latency_test:
-            self.latency_test.handle_message(command, decoded_data)
-        elif self.mode == Mode.COMMAND and self.command_mode:
-            self.command_mode.handle_message(command, decoded_data, byte_string)
-        elif self.mode == Mode.REGRESSION and self.regression_test:
-            self.regression_test.handle_message(command, decoded_data, byte_string)
-        elif self.mode == Mode.STATUS and self.status_mode:
-            self.status_mode.handle_message(command, decoded_data)
-
-    def run_latency_test(self) -> None:
-        """Run latency test if available."""
-        if Mode.LATENCY in self.available_modes and self.latency_test:
-            self.mode = Mode.LATENCY
-            logger.info("Running latency test...")
-            self.latency_test.execute_test()
-        else:
-            logger.info("Latency test not initialized")
-
-    def run_command_mode(self) -> None:
-        """Run command mode if available."""
-        if Mode.COMMAND in self.available_modes and self.command_mode:
-            self.mode = Mode.COMMAND
-            self.command_mode.execute_command_mode()
-        else:
-            logger.info(
-                "Command mode is not available. Serial interface is not connected.",
-            )
-
-    def run_regression_test(self) -> None:
-        """Run regression test if available."""
-        if Mode.REGRESSION in self.available_modes and self.regression_test:
-            self.mode = Mode.REGRESSION
-            self.regression_test.execute_test()
-        else:
-            logger.info(
-                "Regression test is not available. Serial interface is not connected.",
-            )
-
-    def run_status_mode(self) -> None:
-        """Run status mode if available."""
-        if Mode.STATUS in self.available_modes and self.status_mode:
-            self.mode = Mode.STATUS
-            self.status_mode.execute_test()
-        else:
-            logger.info(
-                "Status mode is not available. Serial interface is not connected.",
-            )
-
-    def run_visualization(self) -> None:
-        """Run visualization if available."""
-        if self.visualize_results:
-            self.mode = Mode.VISUALIZE
-            self.visualize_results.execute_visualization()
-        else:
-            logger.info("Visualization is not initialized.")
+        """Dispatch incoming messages to the active module."""
+        module = self.modules.get(self.mode)
+        if not module:
+            return
+        cfg = self.module_configs_by_mode.get(self.mode)
+        if cfg and cfg.handler:
+            cfg.handler(module, command, decoded_data, byte_string)
 
     def cleanup(self) -> None:
         """Cleanup resources and close serial interface."""
@@ -209,69 +249,23 @@ class ApplicationManager:
     def display_menu(self) -> None:
         """Display the menu of available options."""
         print("\nAvailable options:")
-        if self.connected:
-            print("0. Disconnect from device")
-        else:
-            print("0. Connect to device")
-        if Mode.LATENCY in self.available_modes:
-            print("1. Run latency test")
-        if Mode.COMMAND in self.available_modes:
-            print("2. Send command")
-        if Mode.REGRESSION in self.available_modes:
-            print("3. Regression test")
-        if Mode.VISUALIZE in self.available_modes:
-            print("4. Visualize test results")
-        if Mode.STATUS in self.available_modes:
-            print("5. Status mode")
-        print("6. Exit")
+        for item in self.menu_items:
+            if item.condition():
+                print(f"{item.key}. {item.description()}")
 
     def _handle_user_choice(self, choice: str) -> bool:
         """Handle user choice and return whether to continue the loop."""
-
-        def handle_connect_disconnect() -> None:
-            if self.connected:
-                self.disconnect_serial()
-            else:
-                self.connect_serial()
-
-        handlers = {
-            "0": handle_connect_disconnect,
-            "1": lambda: self.run_latency_test()
-            if Mode.LATENCY in self.available_modes
-            else None,
-            "2": lambda: self.run_command_mode()
-            if Mode.COMMAND in self.available_modes
-            else None,
-            "3": lambda: self.run_regression_test()
-            if Mode.REGRESSION in self.available_modes
-            else None,
-            "4": lambda: self.run_visualization()
-            if Mode.VISUALIZE in self.available_modes
-            else None,
-            "5": lambda: self.run_status_mode()
-            if Mode.STATUS in self.available_modes
-            else None,
-        }
-
-        if choice == "6":
-            logger.info("Exiting...")
-            return False
-        handler = handlers.get(choice)
-        if handler:
-            result = handler()
-            if result is None and choice != "0":  # "0" is always available
+        for item in self.menu_items:
+            if choice == item.key:
+                if item.condition():
+                    return item.action()
                 logger.info("Invalid choice or option not available\n")
-        else:
-            logger.info("Invalid choice or option not available\n")
+                return True
+        logger.info("Invalid choice or option not available\n")
         return True
 
     def run(self) -> None:
-        """
-        Run the main application loop.
-
-        This method displays the menu, handles user input, and executes
-        the chosen option until the user decides to exit.
-        """
+        """Run the main application loop."""
         try:
             while True:
                 self.display_menu()
