@@ -39,6 +39,10 @@ jobs:
       - *setup-python
       # Install dependencies
       - *install-dependencies
+      # Install test dependencies
+      - &install-test-dependencies
+        name: Install test dependencies
+        run: pip install -r requirements.test.txt
       # Run tests with coverage
       - name: Run pytest
         run: pytest --cov-branch
@@ -57,13 +61,15 @@ jobs:
       - *setup-python
       # Install dependencies
       - *install-dependencies
+      # Install test dependencies
+      - *install-test-dependencies
       # Run mutation tests
       - name: Run mutmut (mutation tests)
         env:
           MPLBACKEND: Agg
           PYTHONPATH: "${{ github.workspace }}/src"
         run: |
-          mutmut run --max-children 1
+          mutmut run
       # Show mutmut results
       - name: Show mutmut results
         run: mutmut results
