@@ -4,35 +4,72 @@ on:
   push:
 
 jobs:
-  ruff:
-    name: "Ruff"
+  lint-and-format:
+    name: "Lint & Format"
     runs-on: "ubuntu-latest"
     steps:
-        - name: "Checkout the repository"
+        # Checkout the repository
+        - &checkout
+          name: "Checkout the repository"
           uses: "actions/checkout@v5.0.0"
-        - name: "Set up Python"
+        # Set up Python
+        - &setup-python
+          name: "Set up Python"
           uses: "actions/setup-python@v6.0.0"
           with:
             python-version: "3.12"
             cache: "pip"
-        - name: "Install dependencies"
+        # Install dependencies and run linter and formatter
+        - &install-dependencies
+          name: "Install dependencies"
           run: pip install -r requirements.txt
+        # Run linter 
         - name: "Lint"
           run: python3 -m ruff check .
+        # Run formatter in check mode
         - name: "Format"
           run: python3 -m ruff format . --check
-  test:
-    name: "Test"
+  unit-test:
+    name: "Unit Test"
     runs-on: "ubuntu-latest"
     steps:
-      - name: "Checkout the repository"
-        uses: "actions/checkout@v5.0.0"
-      - name: "Set up Python"
-        uses: "actions/setup-python@v6.0.0"
-        with:
-          python-version: "3.12"
-          cache: "pip"
-      - name: Install dependencies
-        run: pip install -r requirements.test.txt -r requirements.txt
+      # Checkout the repository
+      - *checkout
+      # Set up Python
+      - *setup-python
+      # Install dependencies
+      - *install-dependencies
+      # Install test dependencies
+      - &install-test-dependencies
+        name: Install test dependencies
+        run: pip install -r requirements.test.txt
+      # Run tests with coverage
       - name: Run pytest
         run: pytest --cov-branch
+      # Upload coverage reports to Codecov
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+  mutation-test:
+    name: "Mutation Test"
+    runs-on: "ubuntu-latest"
+    steps:
+      # Run mutation tests with mutmut
+      - *checkout
+      # Set up Python
+      - *setup-python
+      # Install dependencies
+      - *install-dependencies
+      # Install test dependencies
+      - *install-test-dependencies
+      # Run mutation tests
+      - name: Run mutmut (mutation tests)
+        env:
+          MPLBACKEND: Agg
+          PYTHONPATH: "${{ github.workspace }}/src"
+        run: |
+          mutmut run
+      # Show mutmut results
+      - name: Show mutmut results
+        run: mutmut results

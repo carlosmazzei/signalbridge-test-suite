@@ -1,10 +1,27 @@
 repos:
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    # Ruff version.
-    rev: "v0.11.2"
+  - repo: local
     hooks:
-      # Run the linter
-      - id: ruff
-        args: [ --fix ]
-      # Run the formatter
+      - id: ruff-lint
+        name: Ruff linter
+        entry: ruff check --fix
+        language: system
+        pass_filenames: false
+
       - id: ruff-format
+        name: Ruff formatter
+        entry: ruff format
+        language: system
+        pass_filenames: false
+
+      - id: pytest
+        name: pytest
+        entry: pytest -q
+        language: system
+        pass_filenames: false
+
+      - id: mutmut
+        name: Mutmut mutation tests
+        entry: mutmut run
+        language: system
+        pass_filenames: false
+        exclude: ^mutants/
