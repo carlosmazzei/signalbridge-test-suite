@@ -8,6 +8,7 @@
 # SignalBridge - Test Suite
 
 [![Tests](https://github.com/carlosmazzei/signalbridge-test-suite/actions/workflows/lint.yml/badge.svg)](https://github.com/carlosmazzei/signalbridge-test-suite/actions/workflows/lint.yml)
+[![Coverage](https://codecov.io/gh/carlosmazzei/signalbridge-test-suite/branch/main/graph/badge.svg)](https://codecov.io/gh/carlosmazzei/signalbridge-test-suite)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
