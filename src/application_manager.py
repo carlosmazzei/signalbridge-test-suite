@@ -1,6 +1,8 @@
 """Application Manager module."""
 
 import logging
+import os
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -248,10 +250,23 @@ class ApplicationManager:
 
     def display_menu(self) -> None:
         """Display the menu of available options."""
-        print("\nAvailable options:")
+        # Enable ANSI colors only when writing to a TTY and terminal isn't dumb
+        enable_color = (
+            hasattr(sys.stdout, "isatty")
+            and sys.stdout.isatty()
+            and (os.environ.get("TERM", "") and os.environ.get("TERM") != "dumb")
+        )
+
+        c_reset = "\033[0m" if enable_color else ""
+        c_bold = "\033[1m" if enable_color else ""
+        c_cyan = "\033[96m" if enable_color else ""
+        c_yellow = "\033[93m" if enable_color else ""
+
+        print(f"\n{c_bold}{c_cyan}Available options:{c_reset}")
         for item in self.menu_items:
             if item.condition():
-                print(f"{item.key}. {item.description()}")
+                # Bold numbers, normal punctuation and description
+                print(f"{c_bold}{c_yellow}{item.key}{c_reset}. {item.description()}")
 
     def _handle_user_choice(self, choice: str) -> bool:
         """Handle user choice and return whether to continue the loop."""

@@ -57,6 +57,14 @@ class StatusMode:
         UNKNOWN_CMD_ERROR = 11
         BYTES_SENT = 12
         BYTES_RECEIVED = 13
+        RESOURCE_ALLOCATION_ERROR = 14
+        OUTPUT_CONTROLLER_ID_ERROR = 15
+        OUTPUT_INIT_ERROR = 16
+        OUTPUT_DRIVER_INIT_ERROR = 17
+        OUTPUT_INVALID_PARAM_ERROR = 18
+        INPUT_QUEUE_INIT_ERROR = 19
+        INPUT_QUEUE_FULL_ERROR = 20
+        INPUT_INIT_ERROR = 21
 
     class TaskNames(StrEnum):
         """Definition of tasks."""
@@ -70,6 +78,7 @@ class StatusMode:
         ADC_TASK_NAME = "ADC read"
         KEY_TASK_NAME = "Key read"
         ENCODER_TASK_NAME = "Encoder read"
+        LED_STATUS_TASK_NAME = "LED status update"
 
     class TaskIndex(IntEnum):
         """Definitions of task indexes."""
@@ -82,6 +91,7 @@ class StatusMode:
         ADC_READ_TASK_INDEX = 5
         KEYPAD_TASK_INDEX = 6
         ENCODER_READ_TASK_INDEX = 7
+        LED_STATUS_TASK_INDEX = 8
         IDLE_TASK_INDEX = 8
 
     def __init__(self, ser: SerialInterface) -> None:
@@ -119,6 +129,26 @@ class StatusMode:
             self.StatisticsCodes.BYTES_RECEIVED: StatisticsItem(
                 "Number of Bytes received"
             ),
+            self.StatisticsCodes.RESOURCE_ALLOCATION_ERROR: StatisticsItem(
+                "Resource Allocation Error"
+            ),
+            self.StatisticsCodes.OUTPUT_CONTROLLER_ID_ERROR: StatisticsItem(
+                "Output Controller ID Error"
+            ),
+            self.StatisticsCodes.OUTPUT_INIT_ERROR: StatisticsItem("Output Init Error"),
+            self.StatisticsCodes.OUTPUT_DRIVER_INIT_ERROR: StatisticsItem(
+                "Output Driver Init Error"
+            ),
+            self.StatisticsCodes.OUTPUT_INVALID_PARAM_ERROR: StatisticsItem(
+                "Output Invalid Parameter Error"
+            ),
+            self.StatisticsCodes.INPUT_QUEUE_INIT_ERROR: StatisticsItem(
+                "Input Queue Init Error"
+            ),
+            self.StatisticsCodes.INPUT_QUEUE_FULL_ERROR: StatisticsItem(
+                "Input Queue Full Error"
+            ),
+            self.StatisticsCodes.INPUT_INIT_ERROR: StatisticsItem("Input Init Error"),
         }
 
         self.task_items: dict[int, TaskItem] = {
@@ -146,6 +176,9 @@ class StatusMode:
             ),
             self.TaskIndex.ENCODER_READ_TASK_INDEX: TaskItem(
                 name=self.TaskNames.ENCODER_TASK_NAME
+            ),
+            self.TaskIndex.LED_STATUS_TASK_INDEX: TaskItem(
+                name=self.TaskNames.LED_STATUS_TASK_NAME
             ),
         }
 
