@@ -11,7 +11,7 @@ jobs:
         # Checkout the repository
         - &checkout
           name: "Checkout the repository"
-          uses: "actions/checkout@v6.0.1"
+          uses: "actions/checkout@v6.0.2"
         # Set up Python
         - &setup-python
           name: "Set up Python"
