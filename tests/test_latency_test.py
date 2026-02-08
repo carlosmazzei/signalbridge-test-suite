@@ -40,13 +40,14 @@ def test_publish_builds_correct_payload_and_records_time(
     with patch("latency_test.time.perf_counter", return_value=123.456):
         latency_tester.publish(counter, message_length)
 
-    # Verify time recorded
+    # Verify time recorded after write and flush
     assert pytest.approx(latency_tester.latency_msg_sent[counter]) == pytest.approx(
         123.456
     )
 
-    # Verify payload structure sent to serial
+    # Verify payload structure sent to serial, followed by flush
     assert ser_mock.write.call_count == 1
+    assert ser_mock.flush.call_count == 1
     (payload,), _ = ser_mock.write.call_args
     assert isinstance(payload, (bytes, bytearray))
     assert len(payload) == message_length

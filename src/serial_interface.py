@@ -128,6 +128,11 @@ class SerialInterface:
         except IndexError:
             logger.exception("Error processing message to send")
 
+    def flush(self) -> None:
+        """Flush the serial output buffer, blocking until all data is transmitted."""
+        if self.ser:
+            self.ser.flush()
+
     def is_open(self) -> bool:
         """Check if connection is open."""
         return self.ser is not None and self.ser.is_open

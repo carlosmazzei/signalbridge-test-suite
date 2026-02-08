@@ -64,8 +64,9 @@ class LatencyTest:
         m_length = (len(trailer) + 2).to_bytes(1, byteorder="big")
         payload = HEADER_BYTES + m_length + counter + trailer
 
-        self.latency_msg_sent[iteration_counter] = time.perf_counter()
         self.ser.write(payload)
+        self.ser.flush()
+        self.latency_msg_sent[iteration_counter] = time.perf_counter()
         logger.info("Published (encoded) `%s`, counter %s", payload, iteration_counter)
 
     def main_test(  # noqa: PLR0913
