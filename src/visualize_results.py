@@ -140,10 +140,17 @@ class VisualizeResults:
                 series_data = np.array(series["results"]) * 1000
                 waiting_time = format(series["waiting_time"] * 1000, ".0f")
                 bitrate = format(series["bitrate"], ".0f")
-                jitter = series["jitter"]
-                series_name = (
-                    f"t: {series['test']}\nw.time:\n{waiting_time}\nbitrate: {bitrate}"
-                )
+                jitter = series.get("jitter", False)
+                if "baudrate" in series:
+                    series_name = (
+                        f"t: {series['test']}\nbaud:\n{series['baudrate']}"
+                        f"\nbitrate: {bitrate}"
+                    )
+                else:
+                    series_name = (
+                        f"t: {series['test']}\nw.time:\n{waiting_time}"
+                        f"\nbitrate: {bitrate}"
+                    )
                 samples += series["samples"]
                 labels.append(series_name)
                 test_data.append(series_data)

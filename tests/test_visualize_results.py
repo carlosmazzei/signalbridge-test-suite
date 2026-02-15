@@ -234,3 +234,52 @@ def test_get_total_pages(visualize_results: VisualizeResults) -> None:
     files = [Path(f"test_{i}.json") for i in range(16)]
     result = visualize_results._get_total_pages(len(files), 5)
     assert result == 4  # noqa: PLR2004
+
+
+def test_visualize_test_results_returns_when_no_file_selected(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should exit early when no file is selected."""
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=None),
+        patch.object(VisualizeResults, "load_and_process_data") as load_mock,
+    ):
+        visualize_results.visualize_test_results()
+    load_mock.assert_not_called()
+
+
+def test_visualize_test_results_runs_boxplot_path(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should call boxplot when user selects option 1."""
+    processed = (["L1"], [np.array([1.0])], [{"p95": 1.0}], 1, False)
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="1"),
+        patch.object(VisualizeResults, "plot_boxplot") as box_mock,
+        patch.object(VisualizeResults, "plot_histogram") as hist_mock,
+    ):
+        visualize_results.visualize_test_results()
+    box_mock.assert_called_once_with(*processed)
+    hist_mock.assert_not_called()
+
+
+def test_visualize_test_results_runs_histogram_path(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should call histogram when user selects option 2."""
+    labels = ["L1"]
+    data = [np.array([1.0])]
+    stats = [{"p95": 1.0}]
+    processed = (labels, data, stats, 1, False)
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="2"),
+        patch.object(VisualizeResults, "plot_boxplot") as box_mock,
+        patch.object(VisualizeResults, "plot_histogram") as hist_mock,
+    ):
+        visualize_results.visualize_test_results()
+    box_mock.assert_not_called()
+    hist_mock.assert_called_once_with(data, labels, stats)

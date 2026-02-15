@@ -101,6 +101,22 @@ class SerialInterface:
             self.ser.close()
             logger.info("Serial port closed")
 
+    def set_baudrate(self, baudrate: int) -> bool:
+        """Close, change baud rate, reopen the port, and restart read threads."""
+        self.close()
+        self.baudrate = baudrate
+        # Python threads cannot be restarted; create new ones
+        self.read_thread = threading.Thread(target=self._read_data)
+        self.processing_thread = threading.Thread(target=self._process_messages)
+        self.read_thread.daemon = True
+        self.processing_thread.daemon = True
+        self.buffer.clear()
+        if not self.open():
+            return False
+        self.start_reading()
+        logger.info("Baud rate changed to %d", baudrate)
+        return True
+
     def send_command(self, hex_data: str) -> None:
         """Send command."""
         if len(hex_data) % 2 != 0:

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from baud_rate_test import BaudRateTest
 from command_mode import CommandMode
 from latency_test import LatencyTest
 from logger_config import setup_logging
@@ -30,6 +31,7 @@ class Mode(Enum):
     REGRESSION = 3
     VISUALIZE = 4
     STATUS = 5
+    BAUD_SWEEP = 6
 
 
 @dataclass
@@ -117,6 +119,16 @@ class ApplicationManager:
                 description="Status mode",
                 builder=lambda: StatusMode(self.serial_interface),
                 runner=lambda module: module.execute_test(),
+                handler=lambda module, command, data, _unused: module.handle_message(
+                    command, data
+                ),
+            ),
+            ModuleConfig(
+                key="6",
+                mode=Mode.BAUD_SWEEP,
+                description="Baud rate sweep test",
+                builder=lambda: BaudRateTest(self.serial_interface),
+                runner=lambda module: module.execute_baud_test(),
                 handler=lambda module, command, data, _unused: module.handle_message(
                     command, data
                 ),

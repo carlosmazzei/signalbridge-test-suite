@@ -44,7 +44,8 @@ def test_initialization(app_manager: ApplicationManager) -> None:
     """Test the initial state of ApplicationManager."""
     assert app_manager.mode == Mode.IDLE
     assert app_manager.modules == {}
-    assert not app_manager.connected
+    assert app_manager.connected is False
+    assert app_manager.monitor_thread is None
 
 
 def test_initialize_success(
@@ -61,6 +62,7 @@ def test_initialize_success(
         Mode.COMMAND,
         Mode.REGRESSION,
         Mode.STATUS,
+        Mode.BAUD_SWEEP,
     }
     ms.set_message_handler.assert_called_once()
     ms.start_reading.assert_called_once()
@@ -144,7 +146,7 @@ def test_app_manager_initial_mode_and_exit_key() -> None:
     with patch("application_manager.SerialInterface"):
         am = ApplicationManager("P", 9600, 0.1)
     assert am.mode == Mode.IDLE
-    assert am.exit_key == "6"  # keys 1..5 defined above, exit is last+1
+    assert am.exit_key == "7"  # keys 1..6 defined above, exit is last+1
 
 
 def test_display_menu_contains_expected_labels(
@@ -177,8 +179,118 @@ def test_display_menu_some_modules(
     out = capsys.readouterr().out
     assert "0. Connect to device" in out
     assert "4. Visualize test results" in out
-    assert "1. Run latency test" not in out
-    assert "5. Status mode" not in out
+
+
+def test_module_configs_builder_wiring(app_manager: ApplicationManager) -> None:
+    """Module configs should construct expected module classes."""
+    cfg_by_mode = {cfg.mode: cfg for cfg in app_manager.module_configs}
+
+    assert set(cfg_by_mode) == {
+        Mode.LATENCY,
+        Mode.COMMAND,
+        Mode.REGRESSION,
+        Mode.VISUALIZE,
+        Mode.STATUS,
+        Mode.BAUD_SWEEP,
+    }
+
+    with (
+        patch("application_manager.BaudRateTest") as baud_cls,
+        patch("application_manager.LatencyTest") as latency_cls,
+        patch("application_manager.CommandMode") as command_cls,
+        patch("application_manager.RegressionTest") as regression_cls,
+        patch("application_manager.VisualizeResults") as visualize_cls,
+        patch("application_manager.StatusMode") as status_cls,
+    ):
+        _ = cfg_by_mode[Mode.LATENCY].builder()
+        latency_cls.assert_called_once_with(app_manager.serial_interface)
+
+        _ = cfg_by_mode[Mode.COMMAND].builder()
+        command_cls.assert_called_once_with(app_manager.serial_interface)
+
+        _ = cfg_by_mode[Mode.REGRESSION].builder()
+        regression_cls.assert_called_once_with(app_manager.serial_interface)
+
+        visualize_cfg = cfg_by_mode[Mode.VISUALIZE]
+        _ = visualize_cfg.builder()
+        visualize_cls.assert_called_once_with()
+        assert visualize_cfg.handler is None
+        assert visualize_cfg.requires_serial is False
+
+        _ = cfg_by_mode[Mode.STATUS].builder()
+        status_cls.assert_called_once_with(app_manager.serial_interface)
+
+        _ = cfg_by_mode[Mode.BAUD_SWEEP].builder()
+        baud_cls.assert_called_once_with(app_manager.serial_interface)
+
+
+def test_module_configs_runner_and_handler_wiring(
+    app_manager: ApplicationManager,
+) -> None:
+    """Runner and handler callbacks should invoke expected module methods."""
+    cfg_by_mode = {cfg.mode: cfg for cfg in app_manager.module_configs}
+
+    latency_module = Mock()
+    cfg_by_mode[Mode.LATENCY].runner(latency_module)
+    latency_module.execute_test.assert_called_once()
+    assert cfg_by_mode[Mode.LATENCY].handler is not None
+    cfg_by_mode[Mode.LATENCY].handler(latency_module, 1, b"d", b"raw")
+    latency_module.handle_message.assert_called_once_with(1, b"d")
+
+    command_module = Mock()
+    cfg_by_mode[Mode.COMMAND].runner(command_module)
+    command_module.execute_command_mode.assert_called_once()
+    assert cfg_by_mode[Mode.COMMAND].handler is not None
+    cfg_by_mode[Mode.COMMAND].handler(command_module, 2, b"d", b"raw")
+    command_module.handle_message.assert_called_once_with(2, b"d", b"raw")
+
+    regression_module = Mock()
+    cfg_by_mode[Mode.REGRESSION].runner(regression_module)
+    regression_module.execute_test.assert_called_once()
+    assert cfg_by_mode[Mode.REGRESSION].handler is not None
+    cfg_by_mode[Mode.REGRESSION].handler(regression_module, 3, b"d", b"raw")
+    regression_module.handle_message.assert_called_once_with(3, b"d", b"raw")
+
+    visualize_module = Mock()
+    cfg_by_mode[Mode.VISUALIZE].runner(visualize_module)
+    visualize_module.execute_visualization.assert_called_once()
+    assert cfg_by_mode[Mode.VISUALIZE].handler is None
+
+    status_module = Mock()
+    cfg_by_mode[Mode.STATUS].runner(status_module)
+    status_module.execute_test.assert_called_once()
+    assert cfg_by_mode[Mode.STATUS].handler is not None
+    cfg_by_mode[Mode.STATUS].handler(status_module, 4, b"d", b"raw")
+    status_module.handle_message.assert_called_once_with(4, b"d")
+
+    baud_module = Mock()
+    cfg_by_mode[Mode.BAUD_SWEEP].runner(baud_module)
+    baud_module.execute_baud_test.assert_called_once()
+    assert cfg_by_mode[Mode.BAUD_SWEEP].handler is not None
+    cfg_by_mode[Mode.BAUD_SWEEP].handler(baud_module, 5, b"d", b"raw")
+    baud_module.handle_message.assert_called_once_with(5, b"d")
+
+
+def test_connect_disconnect_menu_item_uses_toggle_action(
+    app_manager: ApplicationManager,
+) -> None:
+    """Menu item 0 should invoke the bound toggle action."""
+    connect_item = next(item for item in app_manager.menu_items if item.key == "0")
+
+    with (
+        patch.object(app_manager, "connect_serial") as mock_connect,
+        patch.object(app_manager, "disconnect_serial") as mock_disconnect,
+    ):
+        app_manager.connected = False
+        assert connect_item.action() is True
+        mock_connect.assert_called_once()
+        mock_disconnect.assert_not_called()
+
+        mock_connect.reset_mock()
+        app_manager.connected = True
+        assert connect_item.action() is True
+        mock_disconnect.assert_called_once()
+        mock_connect.assert_not_called()
 
 
 def test_handle_user_choice_runs_module(app_manager: ApplicationManager) -> None:

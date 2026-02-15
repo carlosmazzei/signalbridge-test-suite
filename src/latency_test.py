@@ -64,9 +64,9 @@ class LatencyTest:
         m_length = (len(trailer) + 2).to_bytes(1, byteorder="big")
         payload = HEADER_BYTES + m_length + counter + trailer
 
+        self.latency_msg_sent[iteration_counter] = time.perf_counter()
         self.ser.write(payload)
         self.ser.flush()
-        self.latency_msg_sent[iteration_counter] = time.perf_counter()
         logger.info("Published (encoded) `%s`, counter %s", payload, iteration_counter)
 
     def main_test(  # noqa: PLR0913
@@ -107,11 +107,23 @@ class LatencyTest:
         latency_results_copy: list[list[float]] = [[] for _ in range(num_times)]
         bar_title = f"Test / Jitter: {jitter}"
 
+        # Minimum delay for UART TX buffer to drain: COBS adds ~2 bytes overhead,
+        # and 8N1 encoding means 10 bits per byte on the wire.
+        wire_bytes = length + 4  # payload + COBS overhead + delimiter
+        min_uart_delay = (wire_bytes * 10) / self.ser.baudrate
+        logger.info(
+            "Minimum UART drain time: %.3f ms (baud=%d, wire_bytes=%d)",
+            min_uart_delay * 1e3,
+            self.ser.baudrate,
+            wire_bytes,
+        )
+
         with alive_bar(samples * num_times, title=bar_title) as pbar:
             for j in range(num_times):
                 self.latency_msg_sent.clear()
                 self.latency_msg_received.clear()
-                waiting_time = min_wait + (max_wait - min_wait) * (j / (num_times - 1))
+                raw_wait = min_wait + (max_wait - min_wait) * (j / (num_times - 1))
+                waiting_time = max(raw_wait, min_uart_delay)
                 logger.info("Test %s, waiting time: %d s", j, waiting_time)
                 random_max = (max_wait - min_wait) * 0.2
 
@@ -253,6 +265,11 @@ class LatencyTest:
                 logger.info("Message %d latency: %.5f ms", counter, latency * 1e3)
             except IndexError:
                 logger.info("Invalid message (Index Error)")
+            except KeyError:
+                logger.debug(
+                    "Ignoring stale echo response counter=%d (already cleared)",
+                    counter,
+                )
 
     def _get_user_input(self, prompt: str, default_value: Any) -> Any:
         """

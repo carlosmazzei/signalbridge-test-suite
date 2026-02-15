@@ -262,7 +262,9 @@ def test_execute_test_no_serial_logs_and_returns(
 
 def test_main_test_collects_and_writes_output() -> None:
     """main_test runs loops, computes bitrate, and writes output via helper."""
-    tester = LatencyTest(Mock(spec=SerialInterface))
+    mock_ser = Mock(spec=SerialInterface)
+    mock_ser.baudrate = 115200
+    tester = LatencyTest(mock_ser)
 
     # Replace progress bar with a no-op context manager
     class DummyBar:
@@ -319,7 +321,9 @@ def test_main_test_collects_and_writes_output() -> None:
 
 def test_main_test_with_jitter_path() -> None:
     """main_test with jitter=True exercises the random.uniform sleep path."""
-    tester = LatencyTest(Mock(spec=SerialInterface))
+    mock_ser = Mock(spec=SerialInterface)
+    mock_ser.baudrate = 115200
+    tester = LatencyTest(mock_ser)
 
     class DummyBar:
         def __init__(self, *_: Any, **__: Any) -> None: ...
