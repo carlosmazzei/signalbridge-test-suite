@@ -27,6 +27,20 @@ class VisualizeResults:
         "facecolor": "white",
         "alpha": 0.8,
     }
+    status_error_keys: ClassVar[tuple[str, ...]] = (
+        "queue_send_error",
+        "queue_receive_error",
+        "cdc_queue_send_error",
+        "display_out_error",
+        "led_out_error",
+        "watchdog_error",
+        "msg_malformed_error",
+        "cobs_decode_error",
+        "receive_buffer_overflow_error",
+        "checksum_error",
+        "buffer_overflow_error",
+        "unknown_cmd_error",
+    )
 
     def select_test_file(self) -> Path | None:
         """Select a test file from the tests folder."""
@@ -163,6 +177,11 @@ class VisualizeResults:
                         "p95": series["latency_p95"] * 1000,
                         "bitrate": series["bitrate"],
                         "dropped_messages": series["dropped_messages"],
+                        "outstanding_final": series.get("outstanding_final", 0),
+                        "outstanding_max": series.get("outstanding_max", 0),
+                        "status_error_delta_total": self._status_error_delta_total(
+                            series
+                        ),
                     },
                 )
 
@@ -175,6 +194,18 @@ class VisualizeResults:
             return None
         else:
             return labels, test_data, stats_data, samples, jitter
+
+    def _status_error_delta_total(self, series: dict[str, object]) -> int:
+        """Aggregate status delta error counters for one series."""
+        status_delta = series.get("status_delta")
+        if not isinstance(status_delta, dict):
+            return 0
+        statistics = status_delta.get("statistics")
+        if not isinstance(statistics, dict):
+            return 0
+        return int(
+            sum(int(statistics.get(key, 0)) for key in self.status_error_keys),
+        )
 
     def plot_boxplot(
         self,
@@ -215,7 +246,9 @@ class VisualizeResults:
                     f"Avg: {stat['avg']:.1f}\n"
                     f"Min: {stat['min']:.1f}\n"
                     f"Max: {stat['max']:.1f}\n"
-                    f"P95: {stat['p95']:.1f}"
+                    f"P95: {stat['p95']:.1f}\n"
+                    f"ErrΔ: {stat.get('status_error_delta_total', 0):.0f}\n"
+                    f"Backlog: {stat.get('outstanding_final', 0):.0f}"
                 )
 
                 # Posicionar texto à direita do boxplot
@@ -231,18 +264,32 @@ class VisualizeResults:
 
             # Dropped messages subplot
             x = np.arange(len(labels)) + 1
-            width = 0.1
+            width = 0.25
 
-            bars = ax2.bar(
-                x,
-                [s["dropped_messages"] for s in stats_data],
-                width,
+            dropped_bars = ax2.bar(
+                x - width,
+                [s.get("dropped_messages", 0) for s in stats_data],
+                width=width,
                 label="Dropped",
-                alpha=0.8,
+                alpha=0.85,
+            )
+            status_error_bars = ax2.bar(
+                x,
+                [s.get("status_error_delta_total", 0) for s in stats_data],
+                width=width,
+                label="Status Δ Errors",
+                alpha=0.85,
+            )
+            backlog_bars = ax2.bar(
+                x + width,
+                [s.get("outstanding_final", 0) for s in stats_data],
+                width=width,
+                label="Backlog End",
+                alpha=0.85,
             )
 
-            # Add data labels inside the bars
-            for bar in bars:
+            # Add data labels on bars
+            for bar in [*dropped_bars, *status_error_bars, *backlog_bars]:
                 height = bar.get_height()
                 ax2.text(
                     bar.get_x() + bar.get_width() / 2.0,
@@ -321,6 +368,56 @@ class VisualizeResults:
         except Exception:
             logger.exception("Error occurred while plotting histograms.")
 
+    def plot_controller_health(
+        self,
+        labels: list[str],
+        stats_data: list[dict[str, float]],
+    ) -> None:
+        """Plot controller health trends across series."""
+        try:
+            x = np.arange(len(labels))
+            status_errors = [s.get("status_error_delta_total", 0) for s in stats_data]
+            backlog_end = [s.get("outstanding_final", 0) for s in stats_data]
+            backlog_max = [s.get("outstanding_max", 0) for s in stats_data]
+
+            fig, axes = plt.subplots(2, 1, figsize=(11, 8), sharex=True)
+            fig.suptitle("Controller Health Trends", fontsize=12)
+
+            axes[0].bar(x, status_errors, color="tab:red", alpha=0.85)
+            axes[0].set_ylabel("Status Error Δ")
+            axes[0].set_title("Error Delta per Series", fontsize=10)
+            axes[0].grid(axis="y", linestyle="--", alpha=0.7)
+
+            axes[1].plot(
+                x,
+                backlog_end,
+                marker="o",
+                linestyle="-",
+                linewidth=1.5,
+                label="Backlog End",
+            )
+            axes[1].plot(
+                x,
+                backlog_max,
+                marker="^",
+                linestyle="--",
+                linewidth=1.5,
+                label="Backlog Max",
+            )
+            axes[1].set_ylabel("Outstanding Messages")
+            axes[1].set_title("Backlog per Series", fontsize=10)
+            axes[1].set_xticks(x)
+            axes[1].set_xticklabels(labels, fontsize=8)
+            axes[1].grid(axis="y", linestyle="--", alpha=0.7)
+            axes[1].legend()
+            plt.setp(axes[1].get_xticklabels(), rotation=45, ha="right")
+
+            plt.tight_layout()
+            plt.show()
+
+        except Exception:
+            logger.exception("Error occurred while plotting controller health.")
+
     def visualize_test_results(self) -> None:
         """Plot results."""
         file_path = self.select_test_file()
@@ -335,14 +432,17 @@ class VisualizeResults:
         print("Select visualization type:")
         print("1. Boxplot")
         print("2. Histogram")
-        choice = input("Enter choice (1 or 2): ")
+        print("3. Controller health")
+        choice = input("Enter choice (1, 2 or 3): ")
 
         if choice == "1":
             self.plot_boxplot(labels, test_data, stats_data, samples, jitter)
         elif choice == "2":
             self.plot_histogram(test_data, labels, stats_data)
+        elif choice == "3":
+            self.plot_controller_health(labels, stats_data)
         else:
-            print("Invalid choice. Please select 1 or 2.")
+            print("Invalid choice. Please select 1, 2 or 3.")
 
     def execute_visualization(self) -> None:
         """Execute visualization."""

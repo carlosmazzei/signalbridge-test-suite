@@ -3,6 +3,7 @@
 import datetime
 import json
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,39 @@ DEFAULT_WAIT_TIME = 3
 DEFAULT_MESSAGE_LENGTH = 10  # from 6 to 10
 DEFAULT_SAMPLES = 255
 DEFAULT_BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600]
+STATISTICS_HEADER_BYTES = bytes([0x00, 0x37])
+TASK_HEADER_BYTES = bytes([0x00, 0x38])
+STATUS_REQUEST_SPACING_S = 0.02
+STATUS_REQUEST_TIMEOUT_S = 2.0
+
+STATISTICS_ITEMS = {
+    0: "queue_send_error",
+    1: "queue_receive_error",
+    2: "cdc_queue_send_error",
+    3: "display_out_error",
+    4: "led_out_error",
+    5: "watchdog_error",
+    6: "msg_malformed_error",
+    7: "cobs_decode_error",
+    8: "receive_buffer_overflow_error",
+    9: "checksum_error",
+    10: "buffer_overflow_error",
+    11: "unknown_cmd_error",
+    12: "bytes_sent",
+    13: "bytes_received",
+}
+
+TASK_ITEMS = {
+    0: "cdc_task",
+    1: "cdc_write_task",
+    2: "uart_event_task",
+    3: "decode_reception_task",
+    4: "process_outbound_task",
+    5: "adc_read_task",
+    6: "keypad_task",
+    7: "encoder_read_task",
+    8: "idle_task",
+}
 
 setup_logging()
 
@@ -35,6 +69,14 @@ class BaudRateTest:
         self.ser = ser
         self.latency_msg_sent: dict[int, float] = {}
         self.latency_msg_received: dict[int, float] = {}
+        self._status_lock = threading.Lock()
+        self._statistics_values = dict.fromkeys(STATISTICS_ITEMS, 0)
+        self._statistics_updated_at = dict.fromkeys(STATISTICS_ITEMS, 0.0)
+        self._task_values = {
+            idx: {"absolute_time_us": 0, "percent_time": 0, "high_watermark": 0}
+            for idx in TASK_ITEMS
+        }
+        self._task_updated_at = dict.fromkeys(TASK_ITEMS, 0.0)
 
     def publish(self, iteration_counter: int, message_length: int) -> None:
         """Send one message with counter for roundtrip measurement."""
@@ -130,6 +172,124 @@ class BaudRateTest:
                     "Ignoring stale echo response counter=%d (already cleared)",
                     counter,
                 )
+        elif command == SerialCommand.STATISTICS_STATUS_COMMAND.value:
+            try:
+                status_index = decoded_data[3]
+                status_value = int.from_bytes(decoded_data[4:8], byteorder="big")
+                if status_index in self._statistics_values:
+                    now = time.perf_counter()
+                    with self._status_lock:
+                        self._statistics_values[status_index] = status_value
+                        self._statistics_updated_at[status_index] = now
+            except IndexError:
+                logger.info("Invalid statistics status message")
+        elif command == SerialCommand.TASK_STATUS_COMMAND.value:
+            try:
+                status_index = decoded_data[3]
+                abs_time = int.from_bytes(decoded_data[4:8], byteorder="big")
+                perc_time = int.from_bytes(decoded_data[8:12], byteorder="big")
+                h_watermark = int.from_bytes(decoded_data[12:16], byteorder="big")
+                if status_index in self._task_values:
+                    now = time.perf_counter()
+                    with self._status_lock:
+                        self._task_values[status_index] = {
+                            "absolute_time_us": abs_time,
+                            "percent_time": perc_time,
+                            "high_watermark": h_watermark,
+                        }
+                        self._task_updated_at[status_index] = now
+            except IndexError:
+                logger.info("Invalid task status message")
+
+    def _status_update(self, header: bytes, index: int) -> None:
+        """Send one status update command."""
+        payload = header + bytes([0x01]) + index.to_bytes(1, byteorder="big")
+        self.ser.write(payload)
+
+    def _request_status_snapshot(
+        self, timeout_s: float = STATUS_REQUEST_TIMEOUT_S
+    ) -> dict[str, Any]:
+        """Request device status snapshot and wait for responses."""
+        if self.ser is None:
+            return {
+                "statistics": {},
+                "tasks": {},
+                "received": {"statistics": 0, "tasks": 0},
+                "complete": False,
+            }
+
+        snapshot_marker = time.perf_counter()
+        for index in STATISTICS_ITEMS:
+            self._status_update(STATISTICS_HEADER_BYTES, index)
+            time.sleep(STATUS_REQUEST_SPACING_S)
+        for index in TASK_ITEMS:
+            self._status_update(TASK_HEADER_BYTES, index)
+            time.sleep(STATUS_REQUEST_SPACING_S)
+
+        deadline = time.perf_counter() + timeout_s
+        while time.perf_counter() < deadline:
+            with self._status_lock:
+                stats_received = sum(
+                    1
+                    for idx in STATISTICS_ITEMS
+                    if self._statistics_updated_at[idx] >= snapshot_marker
+                )
+                tasks_received = sum(
+                    1
+                    for idx in TASK_ITEMS
+                    if self._task_updated_at[idx] >= snapshot_marker
+                )
+            if stats_received == len(STATISTICS_ITEMS) and tasks_received == len(
+                TASK_ITEMS
+            ):
+                break
+            time.sleep(0.01)
+
+        with self._status_lock:
+            statistics = {
+                name: self._statistics_values[idx]
+                for idx, name in STATISTICS_ITEMS.items()
+            }
+            tasks = {name: self._task_values[idx] for idx, name in TASK_ITEMS.items()}
+            stats_received = sum(
+                1
+                for idx in STATISTICS_ITEMS
+                if self._statistics_updated_at[idx] >= snapshot_marker
+            )
+            tasks_received = sum(
+                1 for idx in TASK_ITEMS if self._task_updated_at[idx] >= snapshot_marker
+            )
+        return {
+            "statistics": statistics,
+            "tasks": tasks,
+            "received": {"statistics": stats_received, "tasks": tasks_received},
+            "complete": (
+                stats_received == len(STATISTICS_ITEMS)
+                and tasks_received == len(TASK_ITEMS)
+            ),
+        }
+
+    def _calculate_status_delta(
+        self, before: dict[str, Any], after: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Calculate delta between two status snapshots."""
+        statistics_delta = {
+            key: after["statistics"].get(key, 0) - before["statistics"].get(key, 0)
+            for key in STATISTICS_ITEMS.values()
+        }
+        tasks_delta = {}
+        for task in TASK_ITEMS.values():
+            before_task = before["tasks"].get(task, {})
+            after_task = after["tasks"].get(task, {})
+            tasks_delta[task] = {
+                "absolute_time_us": after_task.get("absolute_time_us", 0)
+                - before_task.get("absolute_time_us", 0),
+                "percent_time": after_task.get("percent_time", 0)
+                - before_task.get("percent_time", 0),
+                "high_watermark": after_task.get("high_watermark", 0)
+                - before_task.get("high_watermark", 0),
+            }
+        return {"statistics": statistics_delta, "tasks": tasks_delta}
 
     def _get_user_input(self, prompt: str, default_value: Any) -> Any:
         """Get user input with default fallback."""
@@ -163,6 +323,8 @@ class BaudRateTest:
             for j, rate in enumerate(baud_rates):
                 self.latency_msg_sent.clear()
                 self.latency_msg_received.clear()
+                outstanding_messages: list[int] = []
+                status_before = self._request_status_snapshot()
 
                 logger.info("Test %d: setting baud rate to %d", j, rate)
                 if not self.ser.set_baudrate(rate):
@@ -185,10 +347,17 @@ class BaudRateTest:
                     self.publish(i, length)
                     time.sleep(min_uart_delay)
                     pbar()
+                    outstanding_messages.append(
+                        len(self.latency_msg_sent) - len(self.latency_msg_received)
+                    )
 
                 burst_elapsed_time = time.perf_counter() - burst_init_time
                 logger.info("Waiting for %d seconds to collect results...", wait_time)
                 time.sleep(wait_time)
+                status_after = self._request_status_snapshot()
+                outstanding_final = len(self.latency_msg_sent) - len(
+                    self.latency_msg_received
+                )
 
                 bitrate = (samples * 8 * length) / burst_elapsed_time
 
@@ -200,7 +369,22 @@ class BaudRateTest:
                 )
                 test_results["baudrate"] = rate
                 latency_results = list(self.latency_msg_received.values())
-                output_data.append({**test_results, "results": latency_results})
+                output_data.append(
+                    {
+                        **test_results,
+                        "results": latency_results,
+                        "outstanding_messages": outstanding_messages,
+                        "outstanding_max": max(
+                            [*outstanding_messages, outstanding_final], default=0
+                        ),
+                        "outstanding_final": outstanding_final,
+                        "status_before": status_before,
+                        "status_after": status_after,
+                        "status_delta": self._calculate_status_delta(
+                            status_before, status_after
+                        ),
+                    }
+                )
 
         if restore_baudrate:
             logger.info("Restoring original baud rate: %d", original_baudrate)

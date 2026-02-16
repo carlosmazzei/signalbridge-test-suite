@@ -174,6 +174,26 @@ def test_plot_histogram_layout_and_color_sampling(
     linspace_mock.assert_called_once_with(0, 1, len(test_data))
 
 
+def test_plot_controller_health(visualize_results: VisualizeResults) -> None:
+    """Controller health plotting should render without exceptions."""
+    labels = ["t0", "t1"]
+    stats_data = [
+        {
+            "status_error_delta_total": 0,
+            "outstanding_final": 1,
+            "outstanding_max": 2,
+        },
+        {
+            "status_error_delta_total": 3,
+            "outstanding_final": 4,
+            "outstanding_max": 5,
+        },
+    ]
+    with patch("matplotlib.pyplot.show") as mock_show:
+        visualize_results.plot_controller_health(labels, stats_data)
+        mock_show.assert_called_once()
+
+
 def test_get_test_files(visualize_results: VisualizeResults) -> None:
     """Test for the _get_test_files method."""
     mock_files = [Path(f"test_{i}.json") for i in range(5)]
@@ -283,3 +303,25 @@ def test_visualize_test_results_runs_histogram_path(
         visualize_results.visualize_test_results()
     box_mock.assert_not_called()
     hist_mock.assert_called_once_with(data, labels, stats)
+
+
+def test_visualize_test_results_runs_controller_health_path(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should call controller health for option 3."""
+    labels = ["L1"]
+    data = [np.array([1.0])]
+    stats = [{"p95": 1.0}]
+    processed = (labels, data, stats, 1, False)
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="3"),
+        patch.object(VisualizeResults, "plot_boxplot") as box_mock,
+        patch.object(VisualizeResults, "plot_histogram") as hist_mock,
+        patch.object(VisualizeResults, "plot_controller_health") as health_mock,
+    ):
+        visualize_results.visualize_test_results()
+    box_mock.assert_not_called()
+    hist_mock.assert_not_called()
+    health_mock.assert_called_once_with(labels, stats)

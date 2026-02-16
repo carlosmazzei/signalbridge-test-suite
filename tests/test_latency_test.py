@@ -317,6 +317,16 @@ def test_main_test_collects_and_writes_output() -> None:
         assert item["dropped_messages"] == 3  # noqa: PLR2004
         assert isinstance(item["bitrate"], float)
         assert item["results"] == []
+        assert item["outstanding_messages"] == [1, 2, 3]
+        assert item["outstanding_max"] == 3  # noqa: PLR2004
+        assert item["outstanding_final"] == 3  # noqa: PLR2004
+        assert "status_before" in item
+        assert "status_after" in item
+        assert "status_delta" in item
+        assert "statistics" in item["status_before"]
+        assert "tasks" in item["status_before"]
+        assert "received" in item["status_before"]
+        assert "complete" in item["status_before"]
 
 
 def test_main_test_with_jitter_path() -> None:
