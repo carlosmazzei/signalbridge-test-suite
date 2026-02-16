@@ -1,15 +1,19 @@
 """Base test module with shared test infrastructure."""
 
+from __future__ import annotations
+
 import json
 import logging
 import threading
 import time
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from serial_interface import SerialCommand, SerialInterface
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 MAX_SAMPLE_SIZE = 65536  # 2 bytes counter
 HEADER_BYTES = bytes([0x00, 0x34])

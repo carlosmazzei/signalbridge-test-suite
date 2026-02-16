@@ -1,11 +1,13 @@
 """Latency Test Module."""
 
+from __future__ import annotations
+
 import datetime
 import logging
 import random
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from alive_progress import alive_bar
 
@@ -18,7 +20,9 @@ from base_test import (
 )
 from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
-from serial_interface import SerialInterface
+
+if TYPE_CHECKING:
+    from serial_interface import SerialInterface
 
 DEFAULT_NUM_TIMES = 5
 DEFAULT_MAX_WAIT = 0.1

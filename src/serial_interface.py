@@ -1,17 +1,22 @@
 """Serial interface module."""
 
+from __future__ import annotations
+
 import logging
 import queue
 import threading
 from collections import defaultdict
-from collections.abc import Callable
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import serial
 from cobs import cobs
 
 from checksum import calculate_checksum
 from logger_config import setup_logging
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 setup_logging()
 
@@ -182,7 +187,7 @@ class SerialInterface:
             self.statistics.commands_received[command] += 1
             if self.message_handler:
                 self.message_handler(command, decoded_data, byte_string)
-        except (IndexError, cobs.DecodeError):
+        except IndexError, cobs.DecodeError:
             logger.exception("Error processing message")
 
     def _handle_received_data(self, data: bytes, max_message_size: int) -> None:

@@ -59,7 +59,7 @@ mutmut run
 
 ## Code Conventions
 
-- **Python 3.12** target (ruff config, CI)
+- **Python 3.14** target (ruff config, CI)
 - **ruff** with `select = ["ALL"]` — all lint rules enabled, specific ignores in `ruff.toml`
 - Type hints on all functions and class attributes
 - Tests use pytest-style `assert` with `unittest.mock` for hardware mocking

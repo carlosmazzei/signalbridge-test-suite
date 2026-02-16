@@ -1,5 +1,5 @@
-# Assume Python 3.8
-target-version = "py312"
+# Assume Python 3.14
+target-version = "py314"
 
 [lint]
 select = [

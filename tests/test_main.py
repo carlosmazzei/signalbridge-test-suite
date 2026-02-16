@@ -1,7 +1,8 @@
 """Test the main module."""
 
-from collections.abc import Generator
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -10,9 +11,12 @@ from application_manager import ApplicationManager
 from const import BAUDRATE, PORT_NAME, TIMEOUT
 from main import main
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
 
 @pytest.fixture
-def mock_app_manager() -> Generator[Mock, Any, None]:
+def mock_app_manager() -> Generator[Mock, Any]:
     """Mock app_manager."""
     with patch("main.application_manager.ApplicationManager") as mock_manager_cls:
         instance = Mock(spec=ApplicationManager)
@@ -21,21 +25,21 @@ def mock_app_manager() -> Generator[Mock, Any, None]:
 
 
 @pytest.fixture
-def mock_os() -> Generator[MagicMock | AsyncMock, Any, None]:
+def mock_os() -> Generator[MagicMock | AsyncMock, Any]:
     """Patch os.system so 'clear' doesn't actually run."""
     with patch("os.system") as mock_system:
         yield mock_system
 
 
 @pytest.fixture
-def mock_logger() -> Generator[Mock, Any, None]:
+def mock_logger() -> Generator[Mock, Any]:
     """Mock logger."""
     with patch("main.logger") as mock_logger:
         yield mock_logger
 
 
 @pytest.fixture
-def mock_serial_interface() -> Generator[Mock, Any, None]:
+def mock_serial_interface() -> Generator[Mock, Any]:
     """Patch 'SerialInterface' in application_manager.py, returning a mock."""
     with patch("application_manager.SerialInterface") as mock_serial_cls:
         serial_mock = Mock()

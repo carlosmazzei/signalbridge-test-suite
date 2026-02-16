@@ -1,12 +1,13 @@
 """Application Manager module."""
 
+from __future__ import annotations
+
 import logging
 import threading
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from baud_rate_test import BaudRateTest
 from command_mode import CommandMode
@@ -16,6 +17,9 @@ from regression_test import RegressionTest
 from serial_interface import SerialInterface
 from status_mode import StatusMode
 from visualize_results import VisualizeResults
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 setup_logging()
 

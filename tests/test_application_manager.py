@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-def mock_serial() -> Generator[SerialInterface, None, None]:
+def mock_serial() -> Generator[SerialInterface]:
     """Fixture for mocked SerialInterface."""
     with patch("application_manager.SerialInterface") as mock:
         instance = Mock(spec=SerialInterface)
