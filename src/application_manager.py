@@ -88,10 +88,9 @@ class ApplicationManager:
                 description="Send command",
                 builder=lambda: CommandMode(self.serial_interface),
                 runner=lambda module: module.execute_command_mode(),
-                handler=lambda module,
-                command,
-                data,
-                byte_string: module.handle_message(command, data, byte_string),
+                handler=lambda module, command, data, byte_string: (
+                    module.handle_message(command, data, byte_string)
+                ),
             ),
             ModuleConfig(
                 key="3",
@@ -99,16 +98,15 @@ class ApplicationManager:
                 description="Regression test",
                 builder=lambda: RegressionTest(self.serial_interface),
                 runner=lambda module: module.execute_test(),
-                handler=lambda module,
-                command,
-                data,
-                byte_string: module.handle_message(command, data, byte_string),
+                handler=lambda module, command, data, byte_string: (
+                    module.handle_message(command, data, byte_string)
+                ),
             ),
             ModuleConfig(
                 key="4",
                 mode=Mode.VISUALIZE,
                 description="Visualize test results",
-                builder=lambda: VisualizeResults(),
+                builder=lambda: VisualizeResults(),  # noqa: PLW0108
                 runner=lambda module: module.execute_visualization(),
                 handler=None,
                 requires_serial=False,
@@ -139,9 +137,9 @@ class ApplicationManager:
         self.menu_items: list[MenuItem] = [
             MenuItem(
                 "0",
-                lambda: "Disconnect from device"
-                if self.connected
-                else "Connect to device",
+                lambda: (
+                    "Disconnect from device" if self.connected else "Connect to device"
+                ),
                 self._toggle_connection,
             )
         ]

@@ -92,7 +92,7 @@ def test_write_updates_stats_and_calls_serial() -> None:
     si = make_interface()
     ser_mock = Mock()
     # bytes_written equals actual message length passed
-    ser_mock.write.side_effect = lambda m: len(m)
+    ser_mock.write.side_effect = len
     si.ser = ser_mock
 
     # command is data[1] & 0x1F -> 0x14 -> 20
@@ -120,7 +120,7 @@ def test_write_index_error_logs(caplog: pytest.LogCaptureFixture) -> None:
     """Test write with too-short message logs error."""
     si = make_interface()
     ser_mock = Mock()
-    ser_mock.write.side_effect = lambda m: len(m)
+    ser_mock.write.side_effect = len
     si.ser = ser_mock
 
     with caplog.at_level(logging.ERROR):
