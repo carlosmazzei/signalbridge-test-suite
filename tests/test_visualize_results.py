@@ -141,7 +141,10 @@ def test_plot_histogram(visualize_results: VisualizeResults) -> None:
     # Layout calls
     subplots.assert_called_once()
     assert subplots.call_args.kwargs.get("sharey") is True
-    subplots_adjust.assert_called_once_with(wspace=0)
+    # Check both subplots_adjust calls
+    assert subplots_adjust.call_count == 2  # noqa: PLR2004
+    subplots_adjust.assert_any_call(wspace=0)
+    subplots_adjust.assert_any_call(bottom=0.18)
     mock_show.assert_called_once()
 
 
@@ -168,8 +171,10 @@ def test_plot_histogram_layout_and_color_sampling(
     ):
         visualize_results.plot_histogram(test_data, labels, stats_data)
 
-    # subplots_adjust should enforce zero spacing
-    subplots_adjust.assert_called_once_with(wspace=0)
+    # subplots_adjust should enforce zero spacing and bottom margin
+    assert subplots_adjust.call_count == 2  # noqa: PLR2004
+    subplots_adjust.assert_any_call(wspace=0)
+    subplots_adjust.assert_any_call(bottom=0.18)
     # color sampling spans 0..1 with count == len(test_data)
     linspace_mock.assert_called_once_with(0, 1, len(test_data))
 

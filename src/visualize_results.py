@@ -228,6 +228,39 @@ class VisualizeResults:
 
             fig.suptitle(f"Test Results Visualization (jitter = {jitter})", fontsize=12)
 
+            # Add explanatory text for the entire figure
+            explanation_text = (
+                "Variable Explanations:\n"
+                "• Avg/Min/Max: Average, minimum, and maximum "
+                "roundtrip latency (ms)\n"
+                "• P95: 95th percentile latency - 95% of messages "
+                "responded faster\n"
+                "• ErrΔ: Delta in controller error counters "
+                "(COBS, checksum, queue errors)\n"
+                "• Backlog: Outstanding messages not yet acknowledged "
+                "by controller\n"
+                "• Dropped: Messages sent but no response received "
+                "within timeout\n"
+                "• Jitter: Random delays added to simulate network "
+                "variability"
+            )
+
+            fig.text(
+                0.5,
+                0.01,
+                explanation_text,
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                bbox={
+                    "boxstyle": "round,pad=0.5",
+                    "edgecolor": "blue",
+                    "facecolor": "lightblue",
+                    "alpha": 0.7,
+                },
+                wrap=True,
+            )
+
             # Boxplot
             boxplot = ax1.boxplot(test_data, showmeans=True, patch_artist=True)
             ax1.set_title(f"Latency Percentiles (Samples = {samples})", fontsize=10)
@@ -308,6 +341,9 @@ class VisualizeResults:
             ax2.grid(axis="y", linestyle="--", alpha=0.7)
             plt.setp(ax2.get_xticklabels(), rotation=45, ha="right")
 
+            # Adjust layout to make room for explanation text
+            plt.subplots_adjust(bottom=0.20)
+
             plt.show()
 
         except Exception:
@@ -324,6 +360,33 @@ class VisualizeResults:
             fig, axes = plt.subplots(1, len(test_data), figsize=(15, 5), sharey=True)
             plt.subplots_adjust(wspace=0)
             fig.suptitle("Histogram of Test Results", fontsize=12)
+
+            # Add explanatory text
+            explanation_text = (
+                "Variable Explanations:\n"
+                "• Latency: Roundtrip time from message send to "
+                "response receipt (ms)\n"
+                "• P95: 95th percentile - the latency threshold below "
+                "which 95% of messages fall\n"
+                "• Distribution: Shows frequency of different latency "
+                "values across test samples"
+            )
+
+            fig.text(
+                0.5,
+                0.01,
+                explanation_text,
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                bbox={
+                    "boxstyle": "round,pad=0.5",
+                    "edgecolor": "blue",
+                    "facecolor": "lightblue",
+                    "alpha": 0.7,
+                },
+                wrap=True,
+            )
 
             if len(test_data) == 1:
                 axes = [axes]
@@ -363,6 +426,10 @@ class VisualizeResults:
             ax.grid(axis="y", linestyle="--", alpha=0.7)
             ax.legend()
             plt.tight_layout()
+
+            # Adjust layout to make room for explanation text
+            plt.subplots_adjust(bottom=0.18)
+
             plt.show()
 
         except Exception:
@@ -382,6 +449,36 @@ class VisualizeResults:
 
             fig, axes = plt.subplots(2, 1, figsize=(11, 8), sharex=True)
             fig.suptitle("Controller Health Trends", fontsize=12)
+
+            # Add explanatory text
+            explanation_text = (
+                "Variable Explanations:\n"
+                "• Status Error Δ: Change in controller error counters "
+                "(queue errors, COBS decode errors, checksum errors, "
+                "buffer overflows, etc.)\n"
+                "• Backlog End: Number of outstanding unacknowledged "
+                "messages at end of test series\n"
+                "• Backlog Max: Peak number of outstanding messages "
+                "during test series\n"
+                "• Healthy controller: Low error delta, backlog returns "
+                "to zero"
+            )
+
+            fig.text(
+                0.5,
+                0.01,
+                explanation_text,
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                bbox={
+                    "boxstyle": "round,pad=0.5",
+                    "edgecolor": "blue",
+                    "facecolor": "lightblue",
+                    "alpha": 0.7,
+                },
+                wrap=True,
+            )
 
             axes[0].bar(x, status_errors, color="tab:red", alpha=0.85)
             axes[0].set_ylabel("Status Error Δ")
@@ -413,6 +510,10 @@ class VisualizeResults:
             plt.setp(axes[1].get_xticklabels(), rotation=45, ha="right")
 
             plt.tight_layout()
+
+            # Adjust layout to make room for explanation text
+            plt.subplots_adjust(bottom=0.20)
+
             plt.show()
 
         except Exception:
