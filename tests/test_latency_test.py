@@ -11,11 +11,13 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
-from latency_test import (
+from base_test import (
     DEFAULT_MESSAGE_LENGTH,
     DEFAULT_SAMPLES,
     DEFAULT_WAIT_TIME,
     HEADER_BYTES,
+)
+from latency_test import (
     LatencyTest,
 )
 from serial_interface import SerialCommand, SerialInterface
@@ -37,7 +39,7 @@ def test_publish_builds_correct_payload_and_records_time(
     counter = 5
     message_length = 8
 
-    with patch("latency_test.time.perf_counter", return_value=123.456):
+    with patch("base_test.time.perf_counter", return_value=123.456):
         latency_tester.publish(counter, message_length)
 
     # Verify time recorded after write and flush
@@ -144,7 +146,7 @@ def test_write_output_to_file_oserror_logs(caplog: pytest.LogCaptureFixture) -> 
         patch.object(Path, "open", side_effect=OSError),
         caplog.at_level(logging.ERROR),
     ):
-        logger = logging.getLogger("latency_test")
+        logger = logging.getLogger("base_test")
         logger.addHandler(caplog.handler)
         tester._write_output_to_file(bad_path, [{"x": 1}])
         logger.removeHandler(caplog.handler)
@@ -158,7 +160,7 @@ def test_handle_message_valid_updates_latency(latency_tester: LatencyTest) -> No
     latency_tester.latency_msg_sent[counter] = 1.0
 
     # perf_counter now returns 2.5, so latency should be 1.5
-    with patch("latency_test.time.perf_counter", return_value=2.5):
+    with patch("base_test.time.perf_counter", return_value=2.5):
         latency_tester.handle_message(
             SerialCommand.ECHO_COMMAND.value, b"\x00\x00\x00\x00\x07"
         )
@@ -173,7 +175,7 @@ def test_handle_message_index_error_logged(caplog: pytest.LogCaptureFixture) -> 
     tester = LatencyTest(Mock(spec=SerialInterface))
 
     with caplog.at_level(logging.INFO):
-        logger = logging.getLogger("latency_test")
+        logger = logging.getLogger("base_test")
         logger.addHandler(caplog.handler)
         tester.handle_message(SerialCommand.ECHO_COMMAND.value, b"\x01\x02")
         logger.removeHandler(caplog.handler)
@@ -201,7 +203,7 @@ def test_show_options_happy_path() -> None:
     with patch.object(
         LatencyTest,
         "_get_user_input",
-        side_effect=[2, 100, 200, 10, 1, True, 6],
+        side_effect=[2, 6, 100, 200, 10, 1, True],
     ):
         res = tester._show_options()
     # Param: num_times, min_wait(s), max_wait(s), samples, wait_time(s), jitter, msg_len
@@ -211,12 +213,14 @@ def test_show_options_happy_path() -> None:
 def test_show_options_invalid_values(caplog: pytest.LogCaptureFixture) -> None:
     """_show_options falls back to defaults on invalid values."""
     tester = LatencyTest(Mock(spec=SerialInterface))
+    tester.ser.baudrate = 115200  # type: ignore[union-attr]
+    expected_min_wait = ((DEFAULT_MESSAGE_LENGTH + 4) * 10) / 115200
 
     with (
         patch.object(
             LatencyTest,
             "_get_user_input",
-            side_effect=[-1, -10, -20, -1, -1, "nope", 100],
+            side_effect=[-1, 100, -10, -20, -1, -1, "nope"],
         ),
         caplog.at_level(logging.INFO),
     ):
@@ -225,12 +229,12 @@ def test_show_options_invalid_values(caplog: pytest.LogCaptureFixture) -> None:
         res = tester._show_options()
         logger.removeHandler(caplog.handler)
 
-    # num_times -> default 5; min_wait -> default 0; max_wait -> default 0.1
+    # num_times -> default 5; min_wait -> baud-derived default; max_wait -> default 0.1
     # samples -> default 255; wait_time -> default 3; jitter -> coerced False;
     # message_length -> default 10
     assert res == (
         5,
-        0,
+        pytest.approx(expected_min_wait),
         0.1,
         DEFAULT_SAMPLES,
         DEFAULT_WAIT_TIME,
@@ -291,6 +295,8 @@ def test_main_test_collects_and_writes_output() -> None:
         patch("latency_test.alive_bar", DummyBar),
         patch("latency_test.time.sleep", lambda _x: None),
         patch("latency_test.time.perf_counter", side_effect=fake_perf_counter),
+        patch("base_test.time.perf_counter", side_effect=fake_perf_counter),
+        patch("base_test.time.sleep", lambda _x: None),
         patch.object(LatencyTest, "_write_output_to_file", side_effect=fake_write),
     ):
         tester.main_test(
@@ -353,6 +359,8 @@ def test_main_test_with_jitter_path() -> None:
         patch("latency_test.alive_bar", DummyBar),
         patch("latency_test.time.sleep", lambda _x: None),
         patch("latency_test.time.perf_counter", side_effect=fake_perf_counter),
+        patch("base_test.time.perf_counter", side_effect=fake_perf_counter),
+        patch("base_test.time.sleep", lambda _x: None),
         patch("latency_test.random.uniform", return_value=0.0),
         patch.object(LatencyTest, "_write_output_to_file"),
     ):

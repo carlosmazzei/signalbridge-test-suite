@@ -6,11 +6,13 @@ import logging
 from typing import Any
 from unittest.mock import Mock, patch
 
-from baud_rate_test import (
-    DEFAULT_BAUD_RATES,
+from base_test import (
     DEFAULT_MESSAGE_LENGTH,
     DEFAULT_SAMPLES,
     DEFAULT_WAIT_TIME,
+)
+from baud_rate_test import (
+    DEFAULT_BAUD_RATES,
     BaudRateTest,
 )
 from serial_interface import SerialInterface
@@ -50,6 +52,8 @@ def test_baud_rate_test_sweeps_rates_and_writes_output() -> None:
         patch("baud_rate_test.alive_bar", DummyBar),
         patch("baud_rate_test.time.sleep", lambda _x: None),
         patch("baud_rate_test.time.perf_counter", side_effect=fake_perf_counter),
+        patch("base_test.time.perf_counter", side_effect=fake_perf_counter),
+        patch("base_test.time.sleep", lambda _x: None),
         patch.object(BaudRateTest, "_write_output_to_file", side_effect=fake_write),
     ):
         tester.baud_rate_test(
@@ -113,6 +117,8 @@ def test_baud_rate_test_skips_failed_baudrate() -> None:
         patch("baud_rate_test.alive_bar", DummyBar),
         patch("baud_rate_test.time.sleep", lambda _x: None),
         patch("baud_rate_test.time.perf_counter", side_effect=fake_perf_counter),
+        patch("base_test.time.perf_counter", side_effect=fake_perf_counter),
+        patch("base_test.time.sleep", lambda _x: None),
         patch.object(BaudRateTest, "_write_output_to_file", side_effect=fake_write),
     ):
         tester.baud_rate_test(
