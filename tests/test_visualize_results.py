@@ -141,7 +141,10 @@ def test_plot_histogram(visualize_results: VisualizeResults) -> None:
     # Layout calls
     subplots.assert_called_once()
     assert subplots.call_args.kwargs.get("sharey") is True
-    subplots_adjust.assert_called_once_with(wspace=0)
+    # Check both subplots_adjust calls
+    assert subplots_adjust.call_count == 2  # noqa: PLR2004
+    subplots_adjust.assert_any_call(wspace=0)
+    subplots_adjust.assert_any_call(bottom=0.18)
     mock_show.assert_called_once()
 
 
@@ -168,10 +171,32 @@ def test_plot_histogram_layout_and_color_sampling(
     ):
         visualize_results.plot_histogram(test_data, labels, stats_data)
 
-    # subplots_adjust should enforce zero spacing
-    subplots_adjust.assert_called_once_with(wspace=0)
+    # subplots_adjust should enforce zero spacing and bottom margin
+    assert subplots_adjust.call_count == 2  # noqa: PLR2004
+    subplots_adjust.assert_any_call(wspace=0)
+    subplots_adjust.assert_any_call(bottom=0.18)
     # color sampling spans 0..1 with count == len(test_data)
     linspace_mock.assert_called_once_with(0, 1, len(test_data))
+
+
+def test_plot_controller_health(visualize_results: VisualizeResults) -> None:
+    """Controller health plotting should render without exceptions."""
+    labels = ["t0", "t1"]
+    stats_data = [
+        {
+            "status_error_delta_total": 0,
+            "outstanding_final": 1,
+            "outstanding_max": 2,
+        },
+        {
+            "status_error_delta_total": 3,
+            "outstanding_final": 4,
+            "outstanding_max": 5,
+        },
+    ]
+    with patch("matplotlib.pyplot.show") as mock_show:
+        visualize_results.plot_controller_health(labels, stats_data)
+        mock_show.assert_called_once()
 
 
 def test_get_test_files(visualize_results: VisualizeResults) -> None:
@@ -234,3 +259,74 @@ def test_get_total_pages(visualize_results: VisualizeResults) -> None:
     files = [Path(f"test_{i}.json") for i in range(16)]
     result = visualize_results._get_total_pages(len(files), 5)
     assert result == 4  # noqa: PLR2004
+
+
+def test_visualize_test_results_returns_when_no_file_selected(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should exit early when no file is selected."""
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=None),
+        patch.object(VisualizeResults, "load_and_process_data") as load_mock,
+    ):
+        visualize_results.visualize_test_results()
+    load_mock.assert_not_called()
+
+
+def test_visualize_test_results_runs_boxplot_path(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should call boxplot when user selects option 1."""
+    processed = (["L1"], [np.array([1.0])], [{"p95": 1.0}], 1, False)
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="1"),
+        patch.object(VisualizeResults, "plot_boxplot") as box_mock,
+        patch.object(VisualizeResults, "plot_histogram") as hist_mock,
+    ):
+        visualize_results.visualize_test_results()
+    box_mock.assert_called_once_with(*processed)
+    hist_mock.assert_not_called()
+
+
+def test_visualize_test_results_runs_histogram_path(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should call histogram when user selects option 2."""
+    labels = ["L1"]
+    data = [np.array([1.0])]
+    stats = [{"p95": 1.0}]
+    processed = (labels, data, stats, 1, False)
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="2"),
+        patch.object(VisualizeResults, "plot_boxplot") as box_mock,
+        patch.object(VisualizeResults, "plot_histogram") as hist_mock,
+    ):
+        visualize_results.visualize_test_results()
+    box_mock.assert_not_called()
+    hist_mock.assert_called_once_with(data, labels, stats)
+
+
+def test_visualize_test_results_runs_controller_health_path(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should call controller health for option 3."""
+    labels = ["L1"]
+    data = [np.array([1.0])]
+    stats = [{"p95": 1.0}]
+    processed = (labels, data, stats, 1, False)
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="3"),
+        patch.object(VisualizeResults, "plot_boxplot") as box_mock,
+        patch.object(VisualizeResults, "plot_histogram") as hist_mock,
+        patch.object(VisualizeResults, "plot_controller_health") as health_mock,
+    ):
+        visualize_results.visualize_test_results()
+    box_mock.assert_not_called()
+    hist_mock.assert_not_called()
+    health_mock.assert_called_once_with(labels, stats)

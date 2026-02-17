@@ -92,7 +92,7 @@ def test_write_updates_stats_and_calls_serial() -> None:
     si = make_interface()
     ser_mock = Mock()
     # bytes_written equals actual message length passed
-    ser_mock.write.side_effect = lambda m: len(m)
+    ser_mock.write.side_effect = len
     si.ser = ser_mock
 
     # command is data[1] & 0x1F -> 0x14 -> 20
@@ -120,7 +120,7 @@ def test_write_index_error_logs(caplog: pytest.LogCaptureFixture) -> None:
     """Test write with too-short message logs error."""
     si = make_interface()
     ser_mock = Mock()
-    ser_mock.write.side_effect = lambda m: len(m)
+    ser_mock.write.side_effect = len
     si.ser = ser_mock
 
     with caplog.at_level(logging.ERROR):
@@ -245,3 +245,34 @@ def test_close_joins_threads_and_closes_ser() -> None:
     si.read_thread.join.assert_called_once()
     si.processing_thread.join.assert_called_once()
     ser_mock.close.assert_called_once()
+
+
+def test_set_baudrate_success() -> None:
+    """set_baudrate closes, reopens at new rate, and restarts threads."""
+    si = make_interface()
+    # Replace threads with mocks so close() can join them
+    si.read_thread = Mock()
+    si.processing_thread = Mock()
+    si.ser = Mock()
+
+    ser_mock = Mock()
+    ser_mock.is_open = True
+    with patch("serial_interface.serial.Serial", return_value=ser_mock):
+        result = si.set_baudrate(921600)
+
+    assert result is True
+    assert si.baudrate == 921600  # noqa: PLR2004
+
+
+def test_set_baudrate_failure() -> None:
+    """set_baudrate returns False when reopen fails."""
+    si = make_interface()
+    si.read_thread = Mock()
+    si.processing_thread = Mock()
+    si.ser = Mock()
+
+    with patch("serial_interface.serial.Serial", side_effect=serial.SerialException):
+        result = si.set_baudrate(921600)
+
+    assert result is False
+    assert si.baudrate == 921600  # noqa: PLR2004

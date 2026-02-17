@@ -1,13 +1,15 @@
 """Application Manager module."""
 
+from __future__ import annotations
+
 import logging
 import threading
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from baud_rate_test import BaudRateTest
 from command_mode import CommandMode
 from latency_test import LatencyTest
 from logger_config import setup_logging
@@ -15,6 +17,9 @@ from regression_test import RegressionTest
 from serial_interface import SerialInterface
 from status_mode import StatusMode
 from visualize_results import VisualizeResults
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 setup_logging()
 
@@ -30,6 +35,7 @@ class Mode(Enum):
     REGRESSION = 3
     VISUALIZE = 4
     STATUS = 5
+    BAUD_SWEEP = 6
 
 
 @dataclass
@@ -86,10 +92,9 @@ class ApplicationManager:
                 description="Send command",
                 builder=lambda: CommandMode(self.serial_interface),
                 runner=lambda module: module.execute_command_mode(),
-                handler=lambda module,
-                command,
-                data,
-                byte_string: module.handle_message(command, data, byte_string),
+                handler=lambda module, command, data, byte_string: (
+                    module.handle_message(command, data, byte_string)
+                ),
             ),
             ModuleConfig(
                 key="3",
@@ -97,16 +102,15 @@ class ApplicationManager:
                 description="Regression test",
                 builder=lambda: RegressionTest(self.serial_interface),
                 runner=lambda module: module.execute_test(),
-                handler=lambda module,
-                command,
-                data,
-                byte_string: module.handle_message(command, data, byte_string),
+                handler=lambda module, command, data, byte_string: (
+                    module.handle_message(command, data, byte_string)
+                ),
             ),
             ModuleConfig(
                 key="4",
                 mode=Mode.VISUALIZE,
                 description="Visualize test results",
-                builder=lambda: VisualizeResults(),
+                builder=lambda: VisualizeResults(),  # noqa: PLW0108
                 runner=lambda module: module.execute_visualization(),
                 handler=None,
                 requires_serial=False,
@@ -121,15 +125,25 @@ class ApplicationManager:
                     command, data
                 ),
             ),
+            ModuleConfig(
+                key="6",
+                mode=Mode.BAUD_SWEEP,
+                description="Baud rate sweep test",
+                builder=lambda: BaudRateTest(self.serial_interface),
+                runner=lambda module: module.execute_baud_test(),
+                handler=lambda module, command, data, _unused: module.handle_message(
+                    command, data
+                ),
+            ),
         ]
         self.module_configs_by_mode = {cfg.mode: cfg for cfg in self.module_configs}
 
         self.menu_items: list[MenuItem] = [
             MenuItem(
                 "0",
-                lambda: "Disconnect from device"
-                if self.connected
-                else "Connect to device",
+                lambda: (
+                    "Disconnect from device" if self.connected else "Connect to device"
+                ),
                 self._toggle_connection,
             )
         ]

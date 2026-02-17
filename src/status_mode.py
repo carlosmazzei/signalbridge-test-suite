@@ -4,16 +4,52 @@ import datetime
 import logging
 import time
 from dataclasses import dataclass
-from enum import IntEnum, StrEnum
 
 from tabulate import tabulate
 
+from base_test import (
+    STATISTICS_HEADER_BYTES,
+    STATISTICS_ITEMS,
+    TASK_HEADER_BYTES,
+    TASK_ITEMS,
+)
 from serial_interface import SerialCommand, SerialInterface
 
 logger = logging.getLogger(__name__)
 
-STATISTICS_HEADER_BYTES = bytes([0x00, 0x37])
-TASK_HEADER_BYTES = bytes([0x00, 0x38])
+# Display-friendly names for statistics items (keyed by STATISTICS_ITEMS name)
+STATISTICS_DISPLAY_NAMES: dict[str, str] = {
+    "queue_send_error": "Queue Send Error",
+    "queue_receive_error": "Queue Receive Error",
+    "cdc_queue_send_error": "CDC Queue Receive Error",
+    "display_out_error": "Display Output Error",
+    "led_out_error": "LED Output Error",
+    "watchdog_error": "Watchdog Error",
+    "msg_malformed_error": "Malformed Message Error",
+    "cobs_decode_error": "Cobs Decode Error",
+    "receive_buffer_overflow_error": "Receive Buffer Overflow",
+    "checksum_error": "Checksum Error",
+    "buffer_overflow_error": "Buffer Overflow Error",
+    "unknown_cmd_error": "Unknown Command Error",
+    "bytes_sent": "Number of Bytes sent",
+    "bytes_received": "Number of Bytes received",
+}
+
+# Display-friendly names for task items (keyed by TASK_ITEMS name)
+TASK_DISPLAY_NAMES: dict[str, str] = {
+    "cdc_task": "CDC Task",
+    "cdc_write_task": "CDC Write Task",
+    "uart_event_task": "UART handling",
+    "decode_reception_task": "Decode reception",
+    "process_outbound_task": "Inbound process",
+    "adc_read_task": "ADC read",
+    "keypad_task": "Key read",
+    "encoder_read_task": "Encoder read",
+    "idle_task": "Idle",
+}
+
+# Reverse lookup: name -> index for TASK_ITEMS
+_TASK_INDEX_BY_NAME = {name: idx for idx, name in TASK_ITEMS.items()}
 
 
 @dataclass
@@ -40,113 +76,17 @@ class TaskItem:
 class StatusMode:
     """Status mode class."""
 
-    class StatisticsCodes(IntEnum):
-        """Statistics codes for status mode."""
-
-        QUEUE_SEND_ERROR = 0
-        QUEUE_RECEIVE_ERROR = 1
-        CDC_QUEUE_SEND_ERROR = 2
-        DISPLAY_OUT_ERROR = 3
-        LED_OUT_ERROR = 4
-        WATCHDOG_ERROR = 5
-        MSG_MALFORMED_ERROR = 6
-        COBS_DECODE_ERROR = 7
-        RECEIVE_BUFFER_OVERFLOW_ERROR = 8
-        CHECKSUM_ERROR = 9
-        BUFFER_OVERFLOW_ERROR = 10
-        UNKNOWN_CMD_ERROR = 11
-        BYTES_SENT = 12
-        BYTES_RECEIVED = 13
-
-    class TaskNames(StrEnum):
-        """Definition of tasks."""
-
-        IDLE_TASK_NAME = "Idle"
-        CDC_TASK_NAME = "CDC Task"
-        CDC_WRITE_TASK_NAME = "CDC Write Task"
-        UART_TASK_NAME = "UART handling"
-        DECODE_TASK_NAME = "Decode reception"
-        PROCESS_TASK_NAME = "Inbound process"
-        ADC_TASK_NAME = "ADC read"
-        KEY_TASK_NAME = "Key read"
-        ENCODER_TASK_NAME = "Encoder read"
-
-    class TaskIndex(IntEnum):
-        """Definitions of task indexes."""
-
-        CDC_TASK_INDEX = 0
-        CDC_WRITE_TASK_INDEX = 1
-        UART_EVENT_TASK_INDEX = 2
-        DECODE_RECEPTION_TASK_INDEX = 3
-        PROCESS_OUTBOUND_TASK_INDEX = 4
-        ADC_READ_TASK_INDEX = 5
-        KEYPAD_TASK_INDEX = 6
-        ENCODER_READ_TASK_INDEX = 7
-        IDLE_TASK_INDEX = 8
-
     def __init__(self, ser: SerialInterface) -> None:
         """Initialize status mode class."""
         self.logger = logger
         self.ser = ser
         self.error_items: dict[int, StatisticsItem] = {
-            self.StatisticsCodes.QUEUE_SEND_ERROR: StatisticsItem("Queue Send Error"),
-            self.StatisticsCodes.QUEUE_RECEIVE_ERROR: StatisticsItem(
-                "Queue Receive Error"
-            ),
-            self.StatisticsCodes.CDC_QUEUE_SEND_ERROR: StatisticsItem(
-                "CDC Queue Receive Error"
-            ),
-            self.StatisticsCodes.DISPLAY_OUT_ERROR: StatisticsItem(
-                "Display Output Error"
-            ),
-            self.StatisticsCodes.LED_OUT_ERROR: StatisticsItem("LED Output Error"),
-            self.StatisticsCodes.WATCHDOG_ERROR: StatisticsItem("Watchdog Error"),
-            self.StatisticsCodes.MSG_MALFORMED_ERROR: StatisticsItem(
-                "Malformed Message Error"
-            ),
-            self.StatisticsCodes.COBS_DECODE_ERROR: StatisticsItem("Cobs Decode Error"),
-            self.StatisticsCodes.RECEIVE_BUFFER_OVERFLOW_ERROR: StatisticsItem(
-                "Receive Buffer Overflow"
-            ),
-            self.StatisticsCodes.CHECKSUM_ERROR: StatisticsItem("Checksum Error"),
-            self.StatisticsCodes.BUFFER_OVERFLOW_ERROR: StatisticsItem(
-                "Buffer Overflow Error"
-            ),
-            self.StatisticsCodes.UNKNOWN_CMD_ERROR: StatisticsItem(
-                "Unknown Command Error"
-            ),
-            self.StatisticsCodes.BYTES_SENT: StatisticsItem("Number of Bytes sent"),
-            self.StatisticsCodes.BYTES_RECEIVED: StatisticsItem(
-                "Number of Bytes received"
-            ),
+            idx: StatisticsItem(STATISTICS_DISPLAY_NAMES[name])
+            for idx, name in STATISTICS_ITEMS.items()
         }
-
         self.task_items: dict[int, TaskItem] = {
-            self.TaskIndex.IDLE_TASK_INDEX: TaskItem(
-                name=self.TaskNames.IDLE_TASK_NAME
-            ),
-            self.TaskIndex.CDC_TASK_INDEX: TaskItem(name=self.TaskNames.CDC_TASK_NAME),
-            self.TaskIndex.CDC_WRITE_TASK_INDEX: TaskItem(
-                name=self.TaskNames.CDC_WRITE_TASK_NAME
-            ),
-            self.TaskIndex.UART_EVENT_TASK_INDEX: TaskItem(
-                name=self.TaskNames.UART_TASK_NAME
-            ),
-            self.TaskIndex.DECODE_RECEPTION_TASK_INDEX: TaskItem(
-                name=self.TaskNames.DECODE_TASK_NAME
-            ),
-            self.TaskIndex.PROCESS_OUTBOUND_TASK_INDEX: TaskItem(
-                name=self.TaskNames.PROCESS_TASK_NAME
-            ),
-            self.TaskIndex.ADC_READ_TASK_INDEX: TaskItem(
-                name=self.TaskNames.ADC_TASK_NAME
-            ),
-            self.TaskIndex.KEYPAD_TASK_INDEX: TaskItem(
-                name=self.TaskNames.KEY_TASK_NAME
-            ),
-            self.TaskIndex.ENCODER_READ_TASK_INDEX: TaskItem(
-                name=self.TaskNames.ENCODER_TASK_NAME
-            ),
+            idx: TaskItem(name=TASK_DISPLAY_NAMES[name])
+            for idx, name in TASK_ITEMS.items()
         }
 
     def handle_message(self, command: int, decoded_data: bytes) -> None:
@@ -168,7 +108,9 @@ class StatusMode:
                     error_item.value = status_value
                     error_item.last_updated = time.time()
                     self.logger.info(
-                        "%s value updated to %d", error_item.message, error_item.value
+                        "%s value updated to %d",
+                        error_item.message,
+                        error_item.value,
                     )
             elif command == SerialCommand.TASK_STATUS_COMMAND.value:
                 status_index = decoded_data[3]
@@ -220,7 +162,8 @@ class StatusMode:
             self._status_update(STATISTICS_HEADER_BYTES, index)
             time.sleep(0.1)
             self.logger.info(
-                "[%s] status update requested", self.error_items[index].message
+                "[%s] status update requested",
+                self.error_items[index].message,
             )
 
         self.logger.info("Status request complete")
@@ -231,7 +174,8 @@ class StatusMode:
             self._status_update(TASK_HEADER_BYTES, index)
             time.sleep(0.1)
             self.logger.info(
-                "[%s] status update requested", self.task_items[index].name
+                "[%s] status update requested",
+                self.task_items[index].name,
             )
 
         self.logger.info("Status request complete")
@@ -329,19 +273,27 @@ class StatusMode:
             )
         )
 
+        cdc_idx = _TASK_INDEX_BY_NAME["cdc_task"]
+        uart_idx = _TASK_INDEX_BY_NAME["uart_event_task"]
         core0_total_time = (
-            self.task_items[self.TaskIndex.CDC_TASK_INDEX].absoulute_time
-            + self.task_items[self.TaskIndex.UART_EVENT_TASK_INDEX].absoulute_time
+            self.task_items[cdc_idx].absoulute_time
+            + self.task_items[uart_idx].absoulute_time
         )
         print(f"\nCore 0 total time: {core0_total_time:,.3f}")
 
+        idle_idx = _TASK_INDEX_BY_NAME["idle_task"]
+        encoder_idx = _TASK_INDEX_BY_NAME["encoder_read_task"]
+        adc_idx = _TASK_INDEX_BY_NAME["adc_read_task"]
+        keypad_idx = _TASK_INDEX_BY_NAME["keypad_task"]
+        process_idx = _TASK_INDEX_BY_NAME["process_outbound_task"]
+        decode_idx = _TASK_INDEX_BY_NAME["decode_reception_task"]
         core1_total_time = (
-            self.task_items[self.TaskIndex.IDLE_TASK_INDEX].absoulute_time
-            + self.task_items[self.TaskIndex.ENCODER_READ_TASK_INDEX].absoulute_time
-            + self.task_items[self.TaskIndex.ADC_READ_TASK_INDEX].absoulute_time
-            + self.task_items[self.TaskIndex.KEYPAD_TASK_INDEX].absoulute_time
-            + self.task_items[self.TaskIndex.PROCESS_OUTBOUND_TASK_INDEX].absoulute_time
-            + self.task_items[self.TaskIndex.DECODE_RECEPTION_TASK_INDEX].absoulute_time
+            self.task_items[idle_idx].absoulute_time
+            + self.task_items[encoder_idx].absoulute_time
+            + self.task_items[adc_idx].absoulute_time
+            + self.task_items[keypad_idx].absoulute_time
+            + self.task_items[process_idx].absoulute_time
+            + self.task_items[decode_idx].absoulute_time
         )
         print(f"Core 1 total time: {core1_total_time:,.3f}")
 

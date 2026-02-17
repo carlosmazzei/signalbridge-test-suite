@@ -1,17 +1,22 @@
 """Serial interface module."""
 
+from __future__ import annotations
+
 import logging
 import queue
 import threading
 from collections import defaultdict
-from collections.abc import Callable
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import serial
 from cobs import cobs
 
 from checksum import calculate_checksum
 from logger_config import setup_logging
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 setup_logging()
 
@@ -101,6 +106,22 @@ class SerialInterface:
             self.ser.close()
             logger.info("Serial port closed")
 
+    def set_baudrate(self, baudrate: int) -> bool:
+        """Close, change baud rate, reopen the port, and restart read threads."""
+        self.close()
+        self.baudrate = baudrate
+        # Python threads cannot be restarted; create new ones
+        self.read_thread = threading.Thread(target=self._read_data)
+        self.processing_thread = threading.Thread(target=self._process_messages)
+        self.read_thread.daemon = True
+        self.processing_thread.daemon = True
+        self.buffer.clear()
+        if not self.open():
+            return False
+        self.start_reading()
+        logger.info("Baud rate changed to %d", baudrate)
+        return True
+
     def send_command(self, hex_data: str) -> None:
         """Send command."""
         if len(hex_data) % 2 != 0:
@@ -166,7 +187,7 @@ class SerialInterface:
             self.statistics.commands_received[command] += 1
             if self.message_handler:
                 self.message_handler(command, decoded_data, byte_string)
-        except (IndexError, cobs.DecodeError):
+        except IndexError, cobs.DecodeError:
             logger.exception("Error processing message")
 
     def _handle_received_data(self, data: bytes, max_message_size: int) -> None:

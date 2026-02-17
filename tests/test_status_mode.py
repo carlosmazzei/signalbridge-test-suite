@@ -8,9 +8,10 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
 
+from base_test import STATISTICS_HEADER_BYTES
 from serial_interface import SerialCommand
 from status_mode import (
-    STATISTICS_HEADER_BYTES,
+    _TASK_INDEX_BY_NAME,
     StatusMode,
 )
 
@@ -38,7 +39,7 @@ def make_status_mode() -> StatusMode:
 def test_handle_message_updates_statistics(caplog: pytest.LogCaptureFixture) -> None:
     """Test handling a statistics status message updates the correct item."""
     sm = make_status_mode()
-    idx = sm.StatisticsCodes.QUEUE_SEND_ERROR
+    idx = 0  # queue_send_error index from STATISTICS_ITEMS
     value = 123456
     payload = bytes([0x00, 0x00, 0x00, idx]) + value.to_bytes(4, "big")
 
@@ -57,7 +58,7 @@ def test_handle_message_updates_statistics(caplog: pytest.LogCaptureFixture) -> 
 def test_handle_message_updates_task_fields(caplog: pytest.LogCaptureFixture) -> None:
     """Test handling a task status message updates the correct task fields."""
     sm = make_status_mode()
-    idx = sm.TaskIndex.IDLE_TASK_INDEX
+    idx = _TASK_INDEX_BY_NAME["idle_task"]
     abs_time = 3_210_000
     perc_time = 42
     hwm = 777
@@ -186,16 +187,16 @@ def test_display_task_status_outputs_table(capsys: pytest.CaptureFixture[str]) -
     """Test displaying task status outputs formatted table."""
     sm = make_status_mode()
     # Fill some task values
-    sm.task_items[sm.TaskIndex.CDC_TASK_INDEX].absoulute_time = 10_000
-    sm.task_items[sm.TaskIndex.UART_EVENT_TASK_INDEX].absoulute_time = 20_000
-    sm.task_items[sm.TaskIndex.IDLE_TASK_INDEX].absoulute_time = 30_000
-    sm.task_items[sm.TaskIndex.ENCODER_READ_TASK_INDEX].absoulute_time = 40_000
-    sm.task_items[sm.TaskIndex.ADC_READ_TASK_INDEX].absoulute_time = 50_000
-    sm.task_items[sm.TaskIndex.KEYPAD_TASK_INDEX].absoulute_time = 60_000
-    sm.task_items[sm.TaskIndex.PROCESS_OUTBOUND_TASK_INDEX].absoulute_time = 70_000
-    sm.task_items[sm.TaskIndex.DECODE_RECEPTION_TASK_INDEX].absoulute_time = 80_000
-    sm.task_items[sm.TaskIndex.CDC_TASK_INDEX].percent_time = 11
-    sm.task_items[sm.TaskIndex.CDC_TASK_INDEX].high_watermark = 99
+    sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].absoulute_time = 10_000
+    sm.task_items[_TASK_INDEX_BY_NAME["uart_event_task"]].absoulute_time = 20_000
+    sm.task_items[_TASK_INDEX_BY_NAME["idle_task"]].absoulute_time = 30_000
+    sm.task_items[_TASK_INDEX_BY_NAME["encoder_read_task"]].absoulute_time = 40_000
+    sm.task_items[_TASK_INDEX_BY_NAME["adc_read_task"]].absoulute_time = 50_000
+    sm.task_items[_TASK_INDEX_BY_NAME["keypad_task"]].absoulute_time = 60_000
+    sm.task_items[_TASK_INDEX_BY_NAME["process_outbound_task"]].absoulute_time = 70_000
+    sm.task_items[_TASK_INDEX_BY_NAME["decode_reception_task"]].absoulute_time = 80_000
+    sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].percent_time = 11
+    sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].high_watermark = 99
 
     sm._display_task_status()
     out = capsys.readouterr().out
