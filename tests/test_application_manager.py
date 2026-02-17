@@ -496,6 +496,53 @@ def test_handle_message_no_module(app_manager: ApplicationManager) -> None:
     app_manager.handle_message(1, b"d", b"r")  # must not raise
 
 
+def test_monitor_connection_no_disconnect_when_still_open(
+    app_manager: ApplicationManager,
+    mock_serial: SerialInterface,
+) -> None:
+    """Monitor thread must NOT disconnect when the port is still open."""
+    app_manager.connected = True
+    ms = cast("Mock", mock_serial)
+    ms.is_open.return_value = True  # port stays open
+
+    with patch.object(app_manager, "disconnect_serial") as mock_disconnect:
+        app_manager.monitor_stop_event.clear()
+        t = threading.Thread(target=app_manager._monitor_connection, daemon=True)
+        t.start()
+        _time.sleep(0.1)
+        app_manager.monitor_stop_event.set()
+        t.join(timeout=1)
+    mock_disconnect.assert_not_called()
+
+
+def test_initialize_builds_non_serial_module_instance(
+    app_manager: ApplicationManager, mock_serial: SerialInterface
+) -> None:
+    """initialize() stores a real module instance (not None) for VISUALIZE."""
+    ms = cast("Mock", mock_serial)
+    ms.open.return_value = False  # serial fails; only VISUALIZE is registered
+    app_manager.initialize()
+    assert app_manager.modules.get(Mode.VISUALIZE) is not None
+    app_manager.cleanup()
+
+
+def test_display_menu_shows_available_options_header(
+    app_manager: ApplicationManager, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """display_menu always prints the 'Available options:' header."""
+    app_manager.display_menu()
+    assert "Available options:" in capsys.readouterr().out
+
+
+def test_handle_user_choice_condition_false_returns_true(
+    app_manager: ApplicationManager,
+) -> None:
+    """When a menu item's condition is False, _handle_user_choice returns True."""
+    # Mode.LATENCY not in modules → condition evaluates to False
+    result = app_manager._handle_user_choice("1")
+    assert result is True
+
+
 def test_monitor_connection_triggers_disconnect(
     app_manager: ApplicationManager,
     mock_serial: SerialInterface,
