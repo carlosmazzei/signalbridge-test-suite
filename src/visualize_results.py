@@ -666,7 +666,7 @@ class VisualizeResults:
                 error_type: sum(c.get(error_type, 0) for c in error_counters)
                 for error_type in filtered_error_types
             }
-            most_common_error = max(error_totals, key=error_totals.get)
+            most_common_error = max(error_totals, key=lambda x: error_totals[x])
             most_common_count = error_totals[most_common_error]
 
             most_common_name = STATISTICS_DISPLAY_NAMES.get(
