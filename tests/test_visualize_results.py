@@ -225,6 +225,28 @@ def test_display_page(
     assert "1. test_0.json" in captured.out
     assert "n - Next page" in captured.out
     assert "q - Return to main menu" in captured.out
+    assert "p - Previous page" not in captured.out  # page 0 has no previous
+
+
+def test_display_page_no_next_on_last_page(
+    visualize_results: VisualizeResults, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """'n - Next page' must NOT appear when already on the last page."""
+    page_files = [Path(f"test_{i}.json") for i in range(5)]
+    # page 1 of 2 (total=10, page_size=5) → (1+1)*5 = 10 which is NOT < 10
+    visualize_results._display_page(page_files, 1, 10, 5)
+    captured = capsys.readouterr()
+    assert "n - Next page" not in captured.out
+
+
+def test_display_page_shows_correct_page_number(
+    visualize_results: VisualizeResults, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """_display_page shows the correct '(Page X of Y)' text."""
+    page_files = [Path(f"test_{i}.json") for i in range(5)]
+    visualize_results._display_page(page_files, 0, 10, 5)
+    captured = capsys.readouterr()
+    assert "(Page 1 of 2)" in captured.out
 
 
 def test_handle_choice_next_page(visualize_results: VisualizeResults) -> None:
@@ -255,6 +277,26 @@ def test_handle_choice_invalid_input(visualize_results: VisualizeResults) -> Non
     assert result == 0
 
 
+def test_handle_choice_n_on_penultimate_page(
+    visualize_results: VisualizeResults,
+) -> None:
+    """'n' on the second-to-last page advances one page (not two)."""
+    files = [Path(f"test_{i}.json") for i in range(15)]
+    # page 1 of 3 (page_size=5): (1+1)*5=10 < 15 → True → advances to page 2
+    result = visualize_results._handle_choice("n", files[5:10], 1, files, 5)
+    assert result == 2  # noqa: PLR2004
+
+
+def test_handle_choice_digit_at_exact_length_boundary(
+    visualize_results: VisualizeResults,
+) -> None:
+    """A digit equal to len(page_files)+1 is out of range and returns current_page."""
+    files = [Path(f"test_{i}.json") for i in range(3)]
+    # choice "4" → idx=3, len(page_files)=3 → 0 <= 3 < 3 is False
+    result = visualize_results._handle_choice("4", files, 0, files, 5)
+    assert result == 0
+
+
 def test_get_total_pages(visualize_results: VisualizeResults) -> None:
     """Test for the _get_total_pages method."""
     files = [Path(f"test_{i}.json") for i in range(16)]
@@ -272,6 +314,37 @@ def test_visualize_test_results_returns_when_no_file_selected(
     ):
         visualize_results.visualize_test_results()
     load_mock.assert_not_called()
+
+
+def test_visualize_test_results_passes_file_path_to_load(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results passes the selected file path to load_and_process_data."""
+    selected = Path("mytest.json")
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=selected),
+        patch.object(
+            VisualizeResults, "load_and_process_data", return_value=None
+        ) as load_mock,
+    ):
+        visualize_results.visualize_test_results()
+    load_mock.assert_called_once_with(selected)
+
+
+def test_select_test_file_navigates_next_then_selects(
+    visualize_results: VisualizeResults,
+) -> None:
+    """select_test_file correctly advances the page and selects a file."""
+    mock_files = [Path(f"test_{i}.json") for i in range(15)]
+    sorted_files = sorted(mock_files)  # _get_test_files returns sorted results
+    with (
+        patch("visualize_results.Path.glob", return_value=mock_files),
+        # Input: go to next page, then select file "1"
+        patch("builtins.input", side_effect=["n", "1"]),
+    ):
+        result = visualize_results.select_test_file()
+    # After page advance (page_size=10), page 1 starts at sorted index 10
+    assert result == sorted_files[10]
 
 
 def test_visualize_test_results_runs_boxplot_path(
