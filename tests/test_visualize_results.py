@@ -185,14 +185,14 @@ def test_plot_controller_health(visualize_results: VisualizeResults) -> None:
     labels = ["t0", "t1"]
     stats_data = [
         {
-            "status_error_delta_total": 0,
-            "outstanding_final": 1,
-            "outstanding_max": 2,
+            "status_error_delta_total": 0.0,
+            "outstanding_final": 1.0,
+            "outstanding_max": 2.0,
         },
         {
-            "status_error_delta_total": 3,
-            "outstanding_final": 4,
-            "outstanding_max": 5,
+            "status_error_delta_total": 3.0,
+            "outstanding_final": 4.0,
+            "outstanding_max": 5.0,
         },
     ]
     with patch("matplotlib.pyplot.show") as mock_show:
