@@ -40,6 +40,14 @@ STATISTICS_ITEMS = {
     11: "unknown_cmd_error",
     12: "bytes_sent",
     13: "bytes_received",
+    14: "resource_allocation_error",
+    15: "output_controller_id_error",
+    16: "output_init_error",
+    17: "output_driver_init_error",
+    18: "output_invalid_param_error",
+    19: "input_queue_init_error",
+    20: "input_queue_full_error",
+    21: "input_init_error",
 }
 
 TASK_ITEMS = {
@@ -52,6 +60,71 @@ TASK_ITEMS = {
     6: "keypad_task",
     7: "encoder_read_task",
     8: "idle_task",
+    9: "led_status_task",
+}
+
+# Error status keys (excludes bytes_sent and bytes_received which are counters)
+STATUS_ERROR_KEYS: tuple[str, ...] = (
+    "queue_send_error",
+    "queue_receive_error",
+    "cdc_queue_send_error",
+    "display_out_error",
+    "led_out_error",
+    "watchdog_error",
+    "msg_malformed_error",
+    "cobs_decode_error",
+    "receive_buffer_overflow_error",
+    "checksum_error",
+    "buffer_overflow_error",
+    "unknown_cmd_error",
+    "resource_allocation_error",
+    "output_controller_id_error",
+    "output_init_error",
+    "output_driver_init_error",
+    "output_invalid_param_error",
+    "input_queue_init_error",
+    "input_queue_full_error",
+    "input_init_error",
+)
+
+# Display-friendly names for statistics items
+STATISTICS_DISPLAY_NAMES: dict[str, str] = {
+    "queue_send_error": "Queue Send Error",
+    "queue_receive_error": "Queue Receive Error",
+    "cdc_queue_send_error": "CDC Queue Receive Error",
+    "display_out_error": "Display Output Error",
+    "led_out_error": "LED Output Error",
+    "watchdog_error": "Watchdog Error",
+    "msg_malformed_error": "Malformed Message Error",
+    "cobs_decode_error": "Cobs Decode Error",
+    "receive_buffer_overflow_error": "Receive Buffer Overflow",
+    "checksum_error": "Checksum Error",
+    "buffer_overflow_error": "Buffer Overflow Error",
+    "unknown_cmd_error": "Unknown Command Error",
+    "bytes_sent": "Number of Bytes sent",
+    "bytes_received": "Number of Bytes received",
+    "resource_allocation_error": "Resource Allocation Error",
+    "output_controller_id_error": "Output Controller ID Error",
+    "output_init_error": "Output Init Error",
+    "output_driver_init_error": "Output Driver Init Error",
+    "output_invalid_param_error": "Output Invalid Parameter Error",
+    "input_queue_init_error": "Input Queue Init Error",
+    "input_queue_full_error": "Input Queue Full Error",
+    "input_init_error": "Input Init Error",
+}
+
+# Display-friendly names for task items
+TASK_DISPLAY_NAMES: dict[str, str] = {
+    "cdc_task": "CDC Task",
+    "cdc_write_task": "CDC Write Task",
+    "uart_event_task": "UART handling",
+    "decode_reception_task": "Decode reception",
+    "process_outbound_task": "Inbound process",
+    "adc_read_task": "ADC read",
+    "keypad_task": "Key read",
+    "encoder_read_task": "Encoder read",
+    "idle_task": "Idle",
+    "led_status_task": "LED status update",
 }
 
 logger = logging.getLogger(__name__)

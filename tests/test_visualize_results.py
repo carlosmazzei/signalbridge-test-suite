@@ -54,10 +54,11 @@ def test_load_and_process_data_valid(visualize_results: VisualizeResults) -> Non
     with patch("pathlib.Path.open", mock_open(read_data=json.dumps(mock_data))):
         result = visualize_results.load_and_process_data(Path("test.json"))
         assert result is not None
-        labels, test_data, stats_data, samples, jitter = result
+        labels, test_data, stats_data, samples, jitter, error_counters = result
         assert labels == ["t: test1\nw.time:\n100\nbitrate: 100"]
         assert len(test_data) == 1
         assert len(stats_data) == 1
+        assert len(error_counters) == 1
         assert samples == 10  # noqa: PLR2004
         assert jitter is False
 
@@ -277,7 +278,10 @@ def test_visualize_test_results_runs_boxplot_path(
     visualize_results: VisualizeResults,
 ) -> None:
     """visualize_test_results should call boxplot when user selects option 1."""
-    processed = (["L1"], [np.array([1.0])], [{"p95": 1.0}], 1, False)
+    labels = ["L1"]
+    data = [np.array([1.0])]
+    stats = [{"p95": 1.0}]
+    processed = (labels, data, stats, 1, False, [{}])
     with (
         patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
         patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
@@ -286,7 +290,7 @@ def test_visualize_test_results_runs_boxplot_path(
         patch.object(VisualizeResults, "plot_histogram") as hist_mock,
     ):
         visualize_results.visualize_test_results()
-    box_mock.assert_called_once_with(*processed)
+    box_mock.assert_called_once_with(labels, data, stats, 1, jitter=False)
     hist_mock.assert_not_called()
 
 
@@ -297,7 +301,7 @@ def test_visualize_test_results_runs_histogram_path(
     labels = ["L1"]
     data = [np.array([1.0])]
     stats = [{"p95": 1.0}]
-    processed = (labels, data, stats, 1, False)
+    processed = (labels, data, stats, 1, False, [{}])
     with (
         patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
         patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
@@ -317,7 +321,7 @@ def test_visualize_test_results_runs_controller_health_path(
     labels = ["L1"]
     data = [np.array([1.0])]
     stats = [{"p95": 1.0}]
-    processed = (labels, data, stats, 1, False)
+    processed = (labels, data, stats, 1, False, [{}])
     with (
         patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
         patch.object(VisualizeResults, "load_and_process_data", return_value=processed),

@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm
 
+from base_test import STATISTICS_DISPLAY_NAMES, STATUS_ERROR_KEYS
 from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
 
@@ -27,20 +28,6 @@ class VisualizeResults:
         "facecolor": "white",
         "alpha": 0.8,
     }
-    status_error_keys: ClassVar[tuple[str, ...]] = (
-        "queue_send_error",
-        "queue_receive_error",
-        "cdc_queue_send_error",
-        "display_out_error",
-        "led_out_error",
-        "watchdog_error",
-        "msg_malformed_error",
-        "cobs_decode_error",
-        "receive_buffer_overflow_error",
-        "checksum_error",
-        "buffer_overflow_error",
-        "unknown_cmd_error",
-    )
 
     def select_test_file(self) -> Path | None:
         """Select a test file from the tests folder."""
@@ -134,7 +121,17 @@ class VisualizeResults:
     def load_and_process_data(
         self,
         file_path: Path,
-    ) -> tuple[list[str], list[np.ndarray], list[dict[str, float]], int, bool] | None:
+    ) -> (
+        tuple[
+            list[str],
+            list[np.ndarray],
+            list[dict[str, float]],
+            int,
+            bool,
+            list[dict[str, int]],
+        ]
+        | None
+    ):
         """Load and process data from the JSON file."""
         try:
             with file_path.open() as f:
@@ -147,6 +144,7 @@ class VisualizeResults:
             labels = []
             test_data = []
             stats_data = []
+            error_counters = []
             samples = 0
             jitter = False
 
@@ -185,6 +183,13 @@ class VisualizeResults:
                     },
                 )
 
+                # Extract individual error counters
+                status_delta = series.get("status_delta", {})
+                statistics = status_delta.get("statistics", {})
+                error_counters.append(
+                    {key: int(statistics.get(key, 0)) for key in STATUS_ERROR_KEYS}
+                )
+
             if not test_data:
                 msg = "No valid data to visualize."
                 raise ValueError(msg)  # noqa: TRY301
@@ -193,7 +198,7 @@ class VisualizeResults:
             logger.exception("Error processing file %s", file_path)
             return None
         else:
-            return labels, test_data, stats_data, samples, jitter
+            return labels, test_data, stats_data, samples, jitter, error_counters
 
     def _status_error_delta_total(self, series: dict[str, object]) -> int:
         """Aggregate status delta error counters for one series."""
@@ -204,7 +209,7 @@ class VisualizeResults:
         if not isinstance(statistics, dict):
             return 0
         return int(
-            sum(int(statistics.get(key, 0)) for key in self.status_error_keys),
+            sum(int(statistics.get(key, 0)) for key in STATUS_ERROR_KEYS),
         )
 
     def plot_boxplot(
@@ -220,10 +225,9 @@ class VisualizeResults:
             fig, (ax1, ax2) = plt.subplots(
                 2,
                 1,
-                figsize=(10, 8),
+                figsize=(10, 10),
                 gridspec_kw={"height_ratios": [2, 1]},
                 sharex=True,
-                constrained_layout=True,
             )
 
             fig.suptitle(f"Test Results Visualization (jitter = {jitter})", fontsize=12)
@@ -231,14 +235,18 @@ class VisualizeResults:
             # Add explanatory text for the entire figure
             explanation_text = (
                 "Variable Explanations:\n"
+                "• t: Test name identifier  "
+                "• w.time: Waiting time between messages (ms)  "
+                "• baud: UART baud rate  "
+                "• bitrate: Effective data throughput (bits/s)\n"
                 "• Avg/Min/Max: Average, minimum, and maximum "
-                "roundtrip latency (ms)\n"
+                "roundtrip latency (ms)  "
                 "• P95: 95th percentile latency - 95% of messages "
                 "responded faster\n"
-                "• ErrΔ: Delta in controller error counters "
-                "(COBS, checksum, queue errors)\n"
-                "• Backlog: Outstanding messages not yet acknowledged "
-                "by controller\n"
+                "• ErrΔ / Status Δ Errors: Delta in controller error "
+                "counters (COBS, checksum, queue errors)\n"
+                "• Backlog End: Outstanding messages not yet "
+                "acknowledged at end of test  "
                 "• Dropped: Messages sent but no response received "
                 "within timeout\n"
                 "• Jitter: Random delays added to simulate network "
@@ -341,8 +349,9 @@ class VisualizeResults:
             ax2.grid(axis="y", linestyle="--", alpha=0.7)
             plt.setp(ax2.get_xticklabels(), rotation=45, ha="right")
 
-            # Adjust layout to make room for explanation text
-            plt.subplots_adjust(bottom=0.20)
+            # Adjust layout to make room for x-tick labels and explanation text
+            plt.tight_layout()
+            plt.subplots_adjust(bottom=0.28)
 
             plt.show()
 
@@ -364,12 +373,14 @@ class VisualizeResults:
             # Add explanatory text
             explanation_text = (
                 "Variable Explanations:\n"
+                "• t: Test name identifier  "
+                "• w.time: Waiting time between messages (ms)  "
+                "• baud: UART baud rate  "
+                "• bitrate: Effective data throughput (bits/s)\n"
                 "• Latency: Roundtrip time from message send to "
-                "response receipt (ms)\n"
+                "response receipt (ms)  "
                 "• P95: 95th percentile - the latency threshold below "
-                "which 95% of messages fall\n"
-                "• Distribution: Shows frequency of different latency "
-                "values across test samples"
+                "which 95% of messages fall"
             )
 
             fig.text(
@@ -453,11 +464,15 @@ class VisualizeResults:
             # Add explanatory text
             explanation_text = (
                 "Variable Explanations:\n"
+                "• t: Test name identifier  "
+                "• w.time: Waiting time between messages (ms)  "
+                "• baud: UART baud rate  "
+                "• bitrate: Effective data throughput (bits/s)\n"
                 "• Status Error Δ: Change in controller error counters "
                 "(queue errors, COBS decode errors, checksum errors, "
                 "buffer overflows, etc.)\n"
                 "• Backlog End: Number of outstanding unacknowledged "
-                "messages at end of test series\n"
+                "messages at end of test series  "
                 "• Backlog Max: Peak number of outstanding messages "
                 "during test series\n"
                 "• Healthy controller: Low error delta, backlog returns "
@@ -519,6 +534,210 @@ class VisualizeResults:
         except Exception:
             logger.exception("Error occurred while plotting controller health.")
 
+    def plot_error_counter_details(  # noqa: PLR0915
+        self,
+        labels: list[str],
+        error_counters: list[dict[str, int]],
+    ) -> None:
+        """Plot detailed error counter changes before and after each test."""
+        try:
+            # Prepare data for visualization
+            num_series = len(labels)
+            error_types = list(STATUS_ERROR_KEYS)
+            num_errors = len(error_types)
+
+            # Create matrix for heatmap
+            error_matrix = np.zeros((num_errors, num_series))
+            for i, error_type in enumerate(error_types):
+                for j, counters in enumerate(error_counters):
+                    error_matrix[i, j] = counters.get(error_type, 0)
+
+            # Filter out error types with no occurrences
+            has_errors = error_matrix.sum(axis=1) > 0
+            filtered_error_types = [
+                error_types[i] for i in range(num_errors) if has_errors[i]
+            ]
+            filtered_error_matrix = error_matrix[has_errors]
+            filtered_friendly_names = [
+                STATISTICS_DISPLAY_NAMES.get(et, et) for et in filtered_error_types
+            ]
+
+            if len(filtered_error_types) == 0:
+                print("\n✅ No errors detected across all test series!")
+                print("Controller health is excellent - all error counters are zero.\n")
+                return
+
+            # Create figure with subplots
+            fig = plt.figure(figsize=(14, 10))
+            gs = fig.add_gridspec(3, 1, height_ratios=[2, 1.5, 0.8], hspace=0.3)
+
+            fig.suptitle(
+                "Detailed Error Counter Analysis - Before/After Test Series",
+                fontsize=14,
+                fontweight="bold",
+            )
+
+            # Subplot 1: Stacked bar chart
+            ax1 = fig.add_subplot(gs[0])
+            x = np.arange(num_series)
+            bottom = np.zeros(num_series)
+
+            # Use colormap for different error types
+            colors = cm.get_cmap("tab20")(np.linspace(0, 1, len(filtered_error_types)))
+
+            for i, (error_type, friendly_name) in enumerate(
+                zip(filtered_error_types, filtered_friendly_names, strict=False)
+            ):
+                values = [counters.get(error_type, 0) for counters in error_counters]
+                ax1.bar(
+                    x,
+                    values,
+                    bottom=bottom,
+                    label=friendly_name,
+                    color=colors[i],
+                    alpha=0.85,
+                )
+                bottom += values
+
+            ax1.set_ylabel("Error Count (Δ)", fontsize=11)
+            ax1.set_title(
+                "Error Counter Changes per Test Series (Stacked)", fontsize=12
+            )
+            ax1.set_xticks(x)
+            ax1.set_xticklabels(labels, fontsize=8, rotation=45, ha="right")
+            ax1.grid(axis="y", linestyle="--", alpha=0.4)
+            ax1.legend(
+                bbox_to_anchor=(1.02, 1),
+                loc="upper left",
+                fontsize=8,
+                framealpha=0.9,
+            )
+
+            # Subplot 2: Heatmap
+            ax2 = fig.add_subplot(gs[1])
+            im = ax2.imshow(
+                filtered_error_matrix,
+                aspect="auto",
+                cmap="YlOrRd",
+                interpolation="nearest",
+            )
+
+            ax2.set_xticks(np.arange(num_series))
+            ax2.set_yticks(np.arange(len(filtered_error_types)))
+            ax2.set_xticklabels(labels, fontsize=8, rotation=45, ha="right")
+            ax2.set_yticklabels(filtered_friendly_names, fontsize=9)
+            ax2.set_xlabel("Test Series", fontsize=11)
+            ax2.set_ylabel("Error Type", fontsize=11)
+            ax2.set_title("Error Distribution Heatmap", fontsize=12)
+
+            # Add colorbar
+            cbar = plt.colorbar(im, ax=ax2)
+            cbar.set_label("Error Count", rotation=270, labelpad=15)
+
+            # Add text annotations on heatmap
+            for i in range(len(filtered_error_types)):
+                for j in range(num_series):
+                    value = int(filtered_error_matrix[i, j])
+                    if value > 0:
+                        threshold = filtered_error_matrix.max() / 2
+                        text_color = "white" if value > threshold else "black"
+                        ax2.text(
+                            j,
+                            i,
+                            str(value),
+                            ha="center",
+                            va="center",
+                            color=text_color,
+                            fontsize=8,
+                            fontweight="bold",
+                        )
+
+            # Subplot 3: Summary statistics
+            ax3 = fig.add_subplot(gs[2])
+            ax3.axis("off")
+
+            # Calculate summary statistics
+            total_errors = sum(sum(c.values()) for c in error_counters)
+            max_errors_series = max(sum(c.values()) for c in error_counters)
+            series_with_errors = sum(1 for c in error_counters if sum(c.values()) > 0)
+
+            # Most common error type
+            error_totals = {
+                error_type: sum(c.get(error_type, 0) for c in error_counters)
+                for error_type in filtered_error_types
+            }
+            most_common_error = max(error_totals, key=error_totals.get)
+            most_common_count = error_totals[most_common_error]
+
+            most_common_name = STATISTICS_DISPLAY_NAMES.get(
+                most_common_error, most_common_error
+            )
+            summary_text = (
+                "📊 Summary Statistics:\n"
+                f"  • Total errors across all series: {total_errors:,}\n"
+                f"  • Series with errors: {series_with_errors}/{num_series}\n"
+                f"  • Maximum errors in single series: {max_errors_series:,}\n"
+                f"  • Most common error: {most_common_name} "
+                f"({most_common_count:,} occurrences)\n"
+                f"  • Unique error types detected: "
+                f"{len(filtered_error_types)}/{len(error_types)}"
+            )
+
+            ax3.text(
+                0.5,
+                0.5,
+                summary_text,
+                ha="center",
+                va="center",
+                fontsize=10,
+                bbox={
+                    "boxstyle": "round,pad=0.8",
+                    "edgecolor": "darkblue",
+                    "facecolor": "lightcyan",
+                    "alpha": 0.9,
+                },
+                family="monospace",
+            )
+
+            # Add explanatory note
+            explanation_text = (
+                "Variable Explanations:\n"
+                "• t: Test name identifier  "
+                "• w.time: Waiting time between messages (ms)  "
+                "• baud: UART baud rate  "
+                "• bitrate: Effective data throughput (bits/s)\n"
+                "• Error Count (Δ): Change in error counters "
+                "during test series  "
+                "• Queue errors: Message queue congestion  "
+                "• COBS/Checksum errors: Communication integrity "
+                "issues\n"
+                "• Buffer overflow: Data rate exceeds processing "
+                "capacity  "
+                "• Output/Input errors: Hardware initialization or "
+                "configuration issues"
+            )
+
+            fig.text(
+                0.5,
+                0.01,
+                explanation_text,
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                bbox={
+                    "boxstyle": "round,pad=0.6",
+                    "edgecolor": "green",
+                    "facecolor": "lightgreen",
+                    "alpha": 0.7,
+                },
+            )
+
+            plt.subplots_adjust(bottom=0.15, right=0.88)
+            plt.show()
+
+        except Exception:
+            logger.exception("Error occurred while plotting error counter details.")
+
     def visualize_test_results(self) -> None:
         """Plot results."""
         file_path = self.select_test_file()
@@ -529,21 +748,24 @@ class VisualizeResults:
         if processed_data is None:
             return
 
-        labels, test_data, stats_data, samples, jitter = processed_data
+        labels, test_data, stats_data, samples, jitter, error_counters = processed_data
         print("Select visualization type:")
         print("1. Boxplot")
         print("2. Histogram")
         print("3. Controller health")
-        choice = input("Enter choice (1, 2 or 3): ")
+        print("4. Error counter details")
+        choice = input("Enter choice (1, 2, 3 or 4): ")
 
         if choice == "1":
-            self.plot_boxplot(labels, test_data, stats_data, samples, jitter)
+            self.plot_boxplot(labels, test_data, stats_data, samples, jitter=jitter)
         elif choice == "2":
             self.plot_histogram(test_data, labels, stats_data)
         elif choice == "3":
             self.plot_controller_health(labels, stats_data)
+        elif choice == "4":
+            self.plot_error_counter_details(labels, error_counters)
         else:
-            print("Invalid choice. Please select 1, 2 or 3.")
+            print("Invalid choice. Please select 1, 2, 3 or 4.")
 
     def execute_visualization(self) -> None:
         """Execute visualization."""
