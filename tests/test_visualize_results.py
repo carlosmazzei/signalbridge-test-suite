@@ -314,6 +314,123 @@ def test_visualize_test_results_runs_histogram_path(
     hist_mock.assert_called_once_with(data, labels, stats)
 
 
+def test_handle_choice_n_at_last_page(visualize_results: VisualizeResults) -> None:
+    """'n' on the last page stays on the current page."""
+    files = [Path(f"test_{i}.json") for i in range(5)]
+    # (0+1)*5 < 5 is False, so n should not advance
+    result = visualize_results._handle_choice("n", files, 0, files, 5)
+    assert result == 0
+
+
+def test_handle_choice_p_at_first_page(visualize_results: VisualizeResults) -> None:
+    """'p' on page 0 stays on page 0."""
+    files = [Path(f"test_{i}.json") for i in range(15)]
+    result = visualize_results._handle_choice("p", files[:5], 0, files, 5)
+    assert result == 0
+
+
+def test_handle_choice_q_returns_none(visualize_results: VisualizeResults) -> None:
+    """'q' returns None to signal exit."""
+    files = [Path(f"test_{i}.json") for i in range(5)]
+    result = visualize_results._handle_choice("q", files, 0, files, 5)
+    assert result is None
+
+
+def test_handle_choice_out_of_range_digit(visualize_results: VisualizeResults) -> None:
+    """A digit that exceeds the page file count returns current_page."""
+    files = [Path(f"test_{i}.json") for i in range(3)]
+    result = visualize_results._handle_choice("9", files, 0, files, 5)
+    assert result == 0
+
+
+def test_status_error_delta_total_with_data(
+    visualize_results: VisualizeResults,
+) -> None:
+    """_status_error_delta_total sums known error keys from status_delta.statistics."""
+    from base_test import STATUS_ERROR_KEYS  # noqa: PLC0415
+
+    series: dict[str, object] = {
+        "status_delta": {
+            "statistics": {STATUS_ERROR_KEYS[0]: 3, STATUS_ERROR_KEYS[1]: 2},
+        }
+    }
+    result = visualize_results._status_error_delta_total(series)
+    assert result == 5  # noqa: PLR2004
+
+
+def test_status_error_delta_total_no_status_delta(
+    visualize_results: VisualizeResults,
+) -> None:
+    """_status_error_delta_total returns 0 when status_delta key is absent."""
+    assert visualize_results._status_error_delta_total({}) == 0
+
+
+def test_status_error_delta_total_non_dict_status_delta(
+    visualize_results: VisualizeResults,
+) -> None:
+    """_status_error_delta_total returns 0 when status_delta is not a dict."""
+    result = visualize_results._status_error_delta_total({"status_delta": "invalid"})
+    assert result == 0
+
+
+def test_status_error_delta_total_non_dict_statistics(
+    visualize_results: VisualizeResults,
+) -> None:
+    """_status_error_delta_total returns 0 when statistics is not a dict."""
+    result = visualize_results._status_error_delta_total(
+        {"status_delta": {"statistics": 42}}
+    )
+    assert result == 0
+
+
+def test_display_page_shows_previous_option(
+    visualize_results: VisualizeResults, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """_display_page shows 'p - Previous page' when current_page > 0."""
+    page_files = [Path(f"test_{i}.json") for i in range(5)]
+    visualize_results._display_page(page_files, 1, 20, 5)
+    captured = capsys.readouterr()
+    assert "p - Previous page" in captured.out
+
+
+def test_visualize_test_results_error_counter_details(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results calls plot_error_counter_details for choice '4'."""
+    labels = ["L1"]
+    data = [np.array([1.0])]
+    stats = [{"p95": 1.0}]
+    error_counters = [{"key": 0}]
+    processed = (labels, data, stats, 1, False, error_counters)
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="4"),
+        patch.object(VisualizeResults, "plot_error_counter_details") as detail_mock,
+    ):
+        visualize_results.visualize_test_results()
+    detail_mock.assert_called_once_with(labels, error_counters)
+
+
+def test_visualize_test_results_invalid_choice(
+    visualize_results: VisualizeResults,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """visualize_test_results prints an error message for an unrecognised choice."""
+    labels = ["L1"]
+    data = [np.array([1.0])]
+    stats = [{"p95": 1.0}]
+    processed = (labels, data, stats, 1, False, [{}])
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="9"),
+    ):
+        visualize_results.visualize_test_results()
+    out = capsys.readouterr().out
+    assert "Invalid choice" in out
+
+
 def test_visualize_test_results_runs_controller_health_path(
     visualize_results: VisualizeResults,
 ) -> None:

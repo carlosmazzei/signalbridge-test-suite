@@ -447,6 +447,55 @@ def test_toggle_connection_disconnects(app_manager: ApplicationManager) -> None:
     mock_connect.assert_not_called()
 
 
+def test_connect_serial_sets_connected_true(
+    app_manager: ApplicationManager, mock_serial: SerialInterface
+) -> None:
+    """connect_serial sets connected=True when the port opens successfully."""
+    ms = cast("Mock", mock_serial)
+    ms.open.return_value = True
+    result = app_manager.connect_serial()
+    assert result is True
+    assert app_manager.connected is True
+    app_manager.cleanup()
+
+
+def test_connect_serial_sets_connected_false_on_failure(
+    app_manager: ApplicationManager, mock_serial: SerialInterface
+) -> None:
+    """connect_serial sets connected=False when the port fails to open."""
+    ms = cast("Mock", mock_serial)
+    ms.open.return_value = False
+    result = app_manager.connect_serial()
+    assert result is False
+    assert app_manager.connected is False
+
+
+def test_is_module_available_true(app_manager: ApplicationManager) -> None:
+    """_is_module_available returns True when the mode has a registered module."""
+    app_manager.modules[Mode.LATENCY] = object()
+    assert app_manager._is_module_available(Mode.LATENCY) is True
+
+
+def test_is_module_available_false(app_manager: ApplicationManager) -> None:
+    """_is_module_available returns False when the mode has no registered module."""
+    assert app_manager._is_module_available(Mode.LATENCY) is False
+
+
+def test_handle_message_no_handler(app_manager: ApplicationManager) -> None:
+    """handle_message is a no-op when the active mode's config has no handler."""
+    mock_module = Mock()
+    app_manager.modules[Mode.VISUALIZE] = mock_module
+    app_manager.mode = Mode.VISUALIZE  # VISUALIZE has handler=None
+    app_manager.handle_message(1, b"d", b"r")
+    mock_module.handle_message.assert_not_called()
+
+
+def test_handle_message_no_module(app_manager: ApplicationManager) -> None:
+    """handle_message is a no-op when no module is registered for the active mode."""
+    app_manager.mode = Mode.LATENCY  # not present in modules
+    app_manager.handle_message(1, b"d", b"r")  # must not raise
+
+
 def test_monitor_connection_triggers_disconnect(
     app_manager: ApplicationManager,
     mock_serial: SerialInterface,
