@@ -15,7 +15,7 @@ try:  # Best effort: force Agg before any pyplot import
     import matplotlib as mpl
 
     mpl.use("Agg", force=True)  # type: ignore[call-arg]
-except ImportError, AttributeError:
+except (ImportError, AttributeError):  # fmt: skip
     # If matplotlib isn't installed or already configured, log the exception
     logger.exception("Could not configure matplotlib backend.")
 

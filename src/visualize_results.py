@@ -194,7 +194,7 @@ class VisualizeResults:
                 msg = "No valid data to visualize."
                 raise ValueError(msg)  # noqa: TRY301
 
-        except OSError, KeyError, TypeError, ValueError:
+        except (OSError, KeyError, TypeError, ValueError):  # fmt: skip
             logger.exception("Error processing file %s", file_path)
             return None
         else:
