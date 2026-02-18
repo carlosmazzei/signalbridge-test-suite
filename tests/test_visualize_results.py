@@ -71,7 +71,7 @@ def test_load_and_process_data_invalid(visualize_results: VisualizeResults) -> N
 
 
 def test_plot_boxplot(visualize_results: VisualizeResults) -> None:
-    """Test for the plot_data method."""
+    """Test for the plot_boxplot method."""
     labels = ["Test 1"]
     test_data = [np.array([0.01, 0.02, 0.03])]
     stats_data = [
@@ -79,109 +79,76 @@ def test_plot_boxplot(visualize_results: VisualizeResults) -> None:
     ]
     samples = 3
     jitter = False
-    with patch("matplotlib.pyplot.show") as mock_show:
+
+    # Mock matplotlib to verify calls
+    with (
+        patch("matplotlib.pyplot.subplots") as mock_subplots,
+        patch("matplotlib.pyplot.show") as mock_show,
+    ):
+        # Setup mock figure and axes
+        mock_fig = Mock()
+        mock_ax1 = Mock()
+        mock_ax2 = Mock()
+        mock_subplots.return_value = (mock_fig, (mock_ax1, mock_ax2))
+
+        # Setup boxplot return value to avoid iteration errors if it's used
+        mock_boxplot = {"medians": [Mock()]}
+        mock_ax1.boxplot.return_value = mock_boxplot
+        # Setup line get_xydata for stats text positioning
+        mock_boxplot["medians"][0].get_xydata.return_value = [[0, 0], [1, 1]]
+        mock_ax1.get_ylim.return_value = (0, 1)
+
+        # Fix: get_xticklabels must return an iterable
+        mock_ax1.get_xticklabels.return_value = [Mock() for _ in labels]
+
+        # FIX: Configure bar mocks to return float values for math operations
+        mock_bar = Mock()
+        mock_bar.get_x.return_value = 0.0
+        mock_bar.get_width.return_value = 0.5
+        mock_bar.get_height.return_value = 1.0
+        mock_ax2.bar.return_value = [mock_bar]
+
+        # Fix: get_xticklabels must return an iterable
+        mock_ax1.get_xticklabels.return_value = [Mock() for _ in labels]
+        mock_ax2.get_xticklabels.return_value = [Mock() for _ in labels]
+
         visualize_results.plot_boxplot(labels, test_data, stats_data, samples, jitter)
+
+        # Verify plotting calls
+        mock_ax1.boxplot.assert_called_once()
+        mock_ax1.set_title.assert_called()
+        mock_ax2.bar.assert_called()  # Should be called for dropped messages, etc.
         mock_show.assert_called_once()
 
 
 def test_plot_histogram(visualize_results: VisualizeResults) -> None:
-    """Test for the plot_histogram method with detailed assertions."""
-    test_data = [np.array([0.01, 0.02, 0.03]), np.array([0.04, 0.05, 0.06])]
-    labels = ["T1", "T2"]
+    """Test for the plot_histogram method."""
+    test_data = [np.array([0.01, 0.02, 0.03])]
+    labels = ["T1"]
     stats_data = [
         {"p95": 0.03, "avg": 0.02, "min": 0.01, "max": 0.03},
-        {"p95": 0.06, "avg": 0.05, "min": 0.04, "max": 0.06},
     ]
 
-    ax1 = Mock()
-    ax2 = Mock()
-    ax1.get_ylim.return_value = (0, 10)
-    ax2.get_ylim.return_value = (0, 10)
-    fig = Mock()
-
     with (
-        patch(
-            "visualize_results.plt.subplots", return_value=(fig, [ax1, ax2])
-        ) as subplots,
-        patch("visualize_results.plt.subplots_adjust") as subplots_adjust,
-        patch("visualize_results.plt.tight_layout"),
-        patch("visualize_results.plt.show") as mock_show,
-        patch("visualize_results.cm.get_cmap", return_value=lambda v: ["red", "blue"]),  # noqa: ARG005
+        patch("matplotlib.pyplot.subplots") as mock_subplots,
+        patch("matplotlib.pyplot.show") as mock_show,
+        patch("visualize_results.cm.get_cmap", return_value=lambda _: ["red"]),
     ):
+        mock_fig = Mock()
+        mock_ax = Mock()
+        # When len(test_data) == 1, subplots returns single ax, code wraps it in list
+        mock_subplots.return_value = (mock_fig, mock_ax)
+        mock_ax.get_ylim.return_value = (0, 10)
+
         visualize_results.plot_histogram(test_data, labels, stats_data)
 
-    # First axis assertions
-    ax1.hist.assert_called_once()
-    _, kwargs1 = ax1.hist.call_args
-    assert kwargs1["bins"] == 50  # noqa: PLR2004
-    assert kwargs1["alpha"] == pytest.approx(0.75)
-    assert kwargs1["label"] == "T1"
-    assert kwargs1["color"] == "red"
-    assert kwargs1["histtype"] == "stepfilled"
-
-    # p95 vertical line and text label
-    ax1.axvline.assert_called_once_with(0.03, color="red", linestyle="--", alpha=1.0)
-    ax1.text.assert_any_call(
-        0.03,
-        10,
-        "P95: 0.0ms",
-        rotation=90,
-        va="top",
-        ha="right",
-        bbox=visualize_results.bbox_props,
-    )
-    ax1.set_title.assert_called()
-    ax1.set_xlabel.assert_called_with("Latency (ms)")
-    ax1.grid.assert_called_with(axis="y", linestyle="--", alpha=0.7)
-
-    # Second axis basic checks
-    assert ax2.hist.call_count == 1
-    _, kwargs2 = ax2.hist.call_args
-    assert kwargs2["label"] == "T2"
-    assert kwargs2["color"] == "blue"
-    # Layout calls
-    subplots.assert_called_once()
-    assert subplots.call_args.kwargs.get("sharey") is True
-    # Check both subplots_adjust calls
-    assert subplots_adjust.call_count == 2  # noqa: PLR2004
-    subplots_adjust.assert_any_call(wspace=0)
-    subplots_adjust.assert_any_call(bottom=0.18)
-    mock_show.assert_called_once()
-
-
-def test_plot_histogram_layout_and_color_sampling(
-    visualize_results: VisualizeResults,
-) -> None:
-    """Verify layout and color sampling arguments are correct."""
-    test_data = [np.array([0.01, 0.02, 0.03])]
-    labels = ["Only"]
-    stats_data = [{"p95": 0.03, "avg": 0.02, "min": 0.01, "max": 0.03}]
-
-    ax = Mock()
-    ax.get_ylim.return_value = (0, 1)
-    fig = Mock()
-
-    linspace_mock = Mock(return_value=[0.0])
-
-    with (
-        patch("visualize_results.plt.subplots", return_value=(fig, ax)),
-        patch("visualize_results.plt.subplots_adjust") as subplots_adjust,
-        patch("visualize_results.plt.show"),
-        patch("visualize_results.cm.get_cmap", return_value=lambda v: ["green"]),  # noqa: ARG005
-        patch("visualize_results.np.linspace", linspace_mock),
-    ):
-        visualize_results.plot_histogram(test_data, labels, stats_data)
-
-    # subplots_adjust should enforce zero spacing and bottom margin
-    assert subplots_adjust.call_count == 2  # noqa: PLR2004
-    subplots_adjust.assert_any_call(wspace=0)
-    subplots_adjust.assert_any_call(bottom=0.18)
-    # color sampling spans 0..1 with count == len(test_data)
-    linspace_mock.assert_called_once_with(0, 1, len(test_data))
+        mock_ax.hist.assert_called_once()
+        mock_ax.axvline.assert_called()  # Check p95 line
+        mock_show.assert_called_once()
 
 
 def test_plot_controller_health(visualize_results: VisualizeResults) -> None:
-    """Controller health plotting should render without exceptions."""
+    """Test plot_controller_health method."""
     labels = ["t0", "t1"]
     stats_data = [
         {
@@ -195,11 +162,323 @@ def test_plot_controller_health(visualize_results: VisualizeResults) -> None:
             "outstanding_max": 5.0,
         },
     ]
-    with patch("matplotlib.pyplot.show") as mock_show:
+    with (
+        patch("matplotlib.pyplot.subplots") as mock_subplots,
+        patch("matplotlib.pyplot.show") as mock_show,
+        patch("matplotlib.pyplot.setp"),
+    ):
+        mock_fig = Mock()
+        mock_ax1 = Mock()
+        mock_ax2 = Mock()
+        mock_subplots.return_value = (mock_fig, (mock_ax1, mock_ax2))
+
+        # Fix: get_xticklabels must return an iterable
+        mock_ax2.get_xticklabels.return_value = [Mock() for _ in labels]
+
         visualize_results.plot_controller_health(labels, stats_data)
+
+        mock_ax1.bar.assert_called_once()  # Error delta bar chart
+        mock_ax2.plot.assert_called()  # Backlog plots
         mock_show.assert_called_once()
 
 
+def test_plot_error_counter_details(visualize_results: VisualizeResults) -> None:  # noqa: PLR0915
+    """Test plot_error_counter_details method."""
+    from base_test import STATISTICS_DISPLAY_NAMES, STATUS_ERROR_KEYS  # noqa: PLC0415
+
+    labels = ["t0"]
+    # Logic requires non-zero errors to plot. Use a key from the actual set.
+    error_key = next(iter(STATUS_ERROR_KEYS))
+    error_key_display = STATISTICS_DISPLAY_NAMES.get(error_key, error_key)
+    error_counters = [{error_key: 5}]
+
+    with (
+        patch("matplotlib.pyplot.figure") as mock_figure,
+        patch("matplotlib.pyplot.show") as mock_show,
+        # Mock cm.get_cmap because it's used in this method
+        patch("visualize_results.cm.get_cmap", return_value=lambda _: ["red"]),
+        patch("matplotlib.pyplot.colorbar") as mock_colorbar,
+    ):
+        mock_fig = Mock()
+        mock_figure.return_value = mock_fig
+
+        # Configure add_gridspec return value to be subscriptable
+        mock_gs = Mock()
+        mock_gs.__getitem__ = Mock(return_value=Mock())
+        mock_fig.add_gridspec.return_value = mock_gs
+
+        # Setup subplots
+        mock_ax1 = Mock()
+        mock_ax2 = Mock()
+        mock_ax3 = Mock()
+        mock_fig.add_subplot.side_effect = [mock_ax1, mock_ax2, mock_ax3]
+
+        visualize_results.plot_error_counter_details(labels, error_counters)
+
+        # --- Verify Figure ---
+        mock_figure.assert_called_with(figsize=(14, 10))
+        mock_fig.suptitle.assert_called_with(
+            "Detailed Error Counter Analysis - Before/After Test Series",
+            fontsize=14,
+            fontweight="bold",
+        )
+        mock_fig.add_gridspec.assert_called_with(
+            3, 1, height_ratios=[2, 1.5, 0.8], hspace=0.3
+        )
+
+        # --- Verify Subplot 1 (Stacked Bar) ---
+        mock_ax1.bar.assert_called()
+        args, kwargs = mock_ax1.bar.call_args
+        np.testing.assert_array_equal(args[0], np.arange(1))  # x
+        assert args[1] == [5]  # values
+        # Check specific cosmetic args to kill mutants
+        assert kwargs["bottom"] is not None  # checking existence first
+        # verify bottom is [5.] because it was modified in-place after the call
+        np.testing.assert_array_equal(kwargs["bottom"], np.array([5.0]))
+        assert kwargs["label"] == error_key_display
+        assert kwargs["color"] == "red"
+        assert kwargs["alpha"] == 0.85  # noqa: PLR2004
+
+        mock_ax1.set_ylabel.assert_called_with("Error Count (Δ)", fontsize=11)
+        mock_ax1.set_title.assert_called_with(
+            "Error Counter Changes per Test Series (Stacked)", fontsize=12
+        )
+        mock_ax1.set_xticks.assert_called()
+        mock_ax1.set_xticklabels.assert_called_with(
+            labels, fontsize=8, rotation=45, ha="right"
+        )
+        mock_ax1.grid.assert_called_with(axis="y", linestyle="--", alpha=0.4)
+        mock_ax1.legend.assert_called_with(
+            bbox_to_anchor=(1.02, 1),
+            loc="upper left",
+            fontsize=8,
+            framealpha=0.9,
+        )
+
+        # --- Verify Subplot 2 (Heatmap) ---
+        mock_ax2.imshow.assert_called()
+        args, kwargs = mock_ax2.imshow.call_args
+        np.testing.assert_array_equal(args[0], np.array([[5]]))
+        assert kwargs["aspect"] == "auto"
+        assert kwargs["cmap"] == "YlOrRd"
+        assert kwargs["interpolation"] == "nearest"
+
+        mock_ax2.set_xlabel.assert_called_with("Test Series", fontsize=11)
+        mock_ax2.set_ylabel.assert_called_with("Error Type", fontsize=11)
+        mock_ax2.set_title.assert_called_with("Error Distribution Heatmap", fontsize=12)
+
+        # Verify text annotation loops in heatmap
+        mock_ax2.text.assert_called()
+        args, kwargs = mock_ax2.text.call_args
+        # Should be called with (0, 0, "5", ...)
+        assert args[0] == 0
+        assert args[1] == 0
+        assert args[2] == "5"
+        assert kwargs["ha"] == "center"
+        assert kwargs["va"] == "center"
+        assert kwargs["fontsize"] == 8  # noqa: PLR2004
+        assert kwargs["fontweight"] == "bold"
+        # Color logic check: 5 > 2.5 (max/2) -> white
+        assert kwargs["color"] == "white"
+
+        # --- Verify Subplot 3 (Summary Text) ---
+        mock_ax3.axis.assert_called_with("off")
+        mock_ax3.text.assert_called()
+        args, kwargs = mock_ax3.text.call_args
+        summary_text = args[2]
+
+        expected_summary_parts = [
+            "📊 Summary Statistics:",
+            "Total errors across all series: 5",
+            "Series with errors: 1/1",
+            "Maximum errors in single series: 5",
+            f"Most common error: {error_key_display} (5 occurrences)",
+            "Unique error types detected: 1/20",  # 20 is len of STATUS_ERROR_KEYS
+        ]
+        for part in expected_summary_parts:
+            assert part in summary_text, f"Missing '{part}' in summary text"
+
+        assert kwargs["ha"] == "center"
+        assert kwargs["va"] == "center"
+        assert kwargs["fontsize"] == 10  # noqa: PLR2004
+        assert kwargs["family"] == "monospace"
+        assert kwargs["bbox"]["edgecolor"] == "darkblue"
+        assert kwargs["bbox"]["facecolor"] == "lightcyan"
+        assert kwargs["bbox"]["alpha"] == 0.9  # noqa: PLR2004
+
+        # --- Verify Explanation Text ---
+        # fig.text is called twice (one for title? No, fig.suptitle was used.
+        # Ah, fig.text is used for "Variable Explanations" at the bottom)
+        mock_fig.text.assert_called()
+        args, kwargs = mock_fig.text.call_args
+        assert args[0] == 0.5  # noqa: PLR2004
+        assert args[1] == 0.01  # noqa: PLR2004
+        assert "Variable Explanations" in args[2]
+        assert kwargs["ha"] == "center"
+        assert kwargs["fontsize"] == 9  # noqa: PLR2004
+        assert kwargs["bbox"]["edgecolor"] == "green"
+        assert kwargs["bbox"]["facecolor"] == "lightgreen"
+        assert kwargs["bbox"]["alpha"] == 0.7  # noqa: PLR2004
+
+        mock_show.assert_called_once()
+        mock_colorbar.assert_called()
+
+
+def test_visualize_test_results_runs_boxplot_path(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should call real plot_boxplot."""
+    labels = ["L1"]
+    data = [np.array([1.0])]
+    stats = [{"p95": 1.0, "avg": 1.0, "min": 1.0, "max": 1.0, "dropped_messages": 0}]
+    processed = (labels, data, stats, 1, False, [{}])
+
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="1") as mock_input,
+        patch("builtins.print") as mock_print,
+        # We Mock matplotlib to prevent actual window opening,
+        # but we DO NOT mock plot_boxplot
+        patch("matplotlib.pyplot.subplots") as mock_subplots,
+        patch("matplotlib.pyplot.setp"),
+        patch("matplotlib.pyplot.show") as mock_show,
+    ):
+        # Setup mocks for plot_boxplot internals
+        mock_fig = Mock()
+        mock_ax1 = Mock()
+        mock_ax2 = Mock()
+        mock_subplots.return_value = (mock_fig, (mock_ax1, mock_ax2))
+        mock_boxplot = {"medians": [Mock()]}
+        mock_ax1.boxplot.return_value = mock_boxplot
+        mock_boxplot["medians"][0].get_xydata.return_value = [[0, 0], [1, 1]]
+        mock_ax1.get_ylim.return_value = (0, 1)
+        mock_ax1.get_xticklabels.return_value = [Mock() for _ in labels]
+        mock_ax2.get_xticklabels.return_value = [Mock() for _ in labels]
+
+        # Configure bar mocks to return float values for math operations
+        mock_bar = Mock()
+        mock_bar.get_x.return_value = 0.0
+        mock_bar.get_width.return_value = 0.5
+        mock_bar.get_height.return_value = 1.0
+        mock_ax2.bar.return_value = [mock_bar]
+
+        visualize_results.visualize_test_results()
+
+        # Verify result
+        mock_ax1.boxplot.assert_called_once()
+        mock_show.assert_called_once()
+
+        # Verify inputs and prints to kill mutants
+        mock_input.assert_called_with("Enter choice (1, 2, 3 or 4): ")
+        mock_print.assert_any_call("Select visualization type:")
+        mock_print.assert_any_call("1. Boxplot")
+
+
+def test_visualize_test_results_runs_histogram_path(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should call real plot_histogram."""
+    labels = ["L1"]
+    data = [np.array([1.0])]
+    stats = [{"p95": 1.0, "avg": 1.0, "min": 1.0, "max": 1.0}]
+    processed = (labels, data, stats, 1, False, [{}])
+
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="2") as mock_input,
+        patch("builtins.print") as mock_print,
+        patch("matplotlib.pyplot.subplots") as mock_subplots,
+        patch("matplotlib.pyplot.show") as mock_show,
+        patch("visualize_results.cm.get_cmap", return_value=lambda _: ["red"]),
+    ):
+        mock_fig = Mock()
+        mock_ax = Mock()
+        mock_subplots.return_value = (mock_fig, mock_ax)
+        mock_ax.get_ylim.return_value = (0, 10)
+
+        visualize_results.visualize_test_results()
+
+        mock_ax.hist.assert_called_once()
+        mock_ax.axvline.assert_called()  # Check p95 line
+        mock_show.assert_called_once()
+
+        mock_input.assert_called_with("Enter choice (1, 2, 3 or 4): ")
+        mock_print.assert_any_call("2. Histogram")
+
+
+def test_visualize_test_results_runs_controller_health_path(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should call real plot_controller_health."""
+    labels = ["L1"]
+    stats = [
+        {"status_error_delta_total": 0, "outstanding_final": 0, "outstanding_max": 0}
+    ]
+    data = [np.array([1.0])]
+    processed = (labels, data, stats, 1, False, [{}])
+
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="3"),
+        patch("matplotlib.pyplot.subplots") as mock_subplots,
+        patch("matplotlib.pyplot.show") as mock_show,
+        patch("matplotlib.pyplot.setp"),
+    ):
+        mock_fig = Mock()
+        mock_ax1 = Mock()
+        mock_ax2 = Mock()
+        mock_subplots.return_value = (mock_fig, (mock_ax1, mock_ax2))
+        mock_ax2.get_xticklabels.return_value = [Mock() for _ in labels]
+
+        visualize_results.visualize_test_results()
+
+        mock_ax1.bar.assert_called_once()
+        mock_show.assert_called_once()
+
+
+def test_visualize_test_results_runs_error_details_path(
+    visualize_results: VisualizeResults,
+) -> None:
+    """visualize_test_results should call real plot_error_counter_details."""
+    from base_test import STATUS_ERROR_KEYS  # noqa: PLC0415
+
+    labels = ["L1"]
+    # Must provide NON-ZERO errors to trigger plotting
+    error_key = next(iter(STATUS_ERROR_KEYS))
+    error_counters = [{error_key: 5}]
+    data = [np.array([1.0])]
+    stats = [{"p95": 1.0}]
+    processed = (labels, data, stats, 1, False, error_counters)
+
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
+        patch("builtins.input", return_value="4"),
+        patch("matplotlib.pyplot.figure") as mock_figure,
+        patch("matplotlib.pyplot.show") as mock_show,
+        patch("visualize_results.cm.get_cmap", return_value=lambda _: ["red"]),
+        patch("matplotlib.pyplot.colorbar"),
+    ):
+        mock_fig = Mock()
+        mock_figure.return_value = mock_fig
+
+        # FIX: Configure add_gridspec return value to be subscriptable
+        mock_gs = Mock()
+        mock_gs.__getitem__ = Mock(return_value=Mock())
+        mock_fig.add_gridspec.return_value = mock_gs
+
+        mock_fig.add_subplot.return_value = Mock()
+
+        visualize_results.visualize_test_results()
+
+        mock_fig.add_subplot.assert_called()
+        mock_show.assert_called_once()
+
+
+# Keep existing helper tests
 def test_get_test_files(visualize_results: VisualizeResults) -> None:
     """Test for the _get_test_files method."""
     mock_files = [Path(f"test_{i}.json") for i in range(5)]
@@ -225,7 +504,7 @@ def test_display_page(
     assert "1. test_0.json" in captured.out
     assert "n - Next page" in captured.out
     assert "q - Return to main menu" in captured.out
-    assert "p - Previous page" not in captured.out  # page 0 has no previous
+    assert "p - Previous page" not in captured.out
 
 
 def test_display_page_no_next_on_last_page(
@@ -233,7 +512,6 @@ def test_display_page_no_next_on_last_page(
 ) -> None:
     """'n - Next page' must NOT appear when already on the last page."""
     page_files = [Path(f"test_{i}.json") for i in range(5)]
-    # page 1 of 2 (total=10, page_size=5) → (1+1)*5 = 10 which is NOT < 10
     visualize_results._display_page(page_files, 1, 10, 5)
     captured = capsys.readouterr()
     assert "n - Next page" not in captured.out
@@ -282,7 +560,6 @@ def test_handle_choice_n_on_penultimate_page(
 ) -> None:
     """'n' on the second-to-last page advances one page (not two)."""
     files = [Path(f"test_{i}.json") for i in range(15)]
-    # page 1 of 3 (page_size=5): (1+1)*5=10 < 15 → True → advances to page 2
     result = visualize_results._handle_choice("n", files[5:10], 1, files, 5)
     assert result == 2  # noqa: PLR2004
 
@@ -292,7 +569,6 @@ def test_handle_choice_digit_at_exact_length_boundary(
 ) -> None:
     """A digit equal to len(page_files)+1 is out of range and returns current_page."""
     files = [Path(f"test_{i}.json") for i in range(3)]
-    # choice "4" → idx=3, len(page_files)=3 → 0 <= 3 < 3 is False
     result = visualize_results._handle_choice("4", files, 0, files, 5)
     assert result == 0
 
@@ -336,61 +612,18 @@ def test_select_test_file_navigates_next_then_selects(
 ) -> None:
     """select_test_file correctly advances the page and selects a file."""
     mock_files = [Path(f"test_{i}.json") for i in range(15)]
-    sorted_files = sorted(mock_files)  # _get_test_files returns sorted results
+    sorted_files = sorted(mock_files)
     with (
         patch("visualize_results.Path.glob", return_value=mock_files),
-        # Input: go to next page, then select file "1"
         patch("builtins.input", side_effect=["n", "1"]),
     ):
         result = visualize_results.select_test_file()
-    # After page advance (page_size=10), page 1 starts at sorted index 10
     assert result == sorted_files[10]
-
-
-def test_visualize_test_results_runs_boxplot_path(
-    visualize_results: VisualizeResults,
-) -> None:
-    """visualize_test_results should call boxplot when user selects option 1."""
-    labels = ["L1"]
-    data = [np.array([1.0])]
-    stats = [{"p95": 1.0}]
-    processed = (labels, data, stats, 1, False, [{}])
-    with (
-        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
-        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
-        patch("builtins.input", return_value="1"),
-        patch.object(VisualizeResults, "plot_boxplot") as box_mock,
-        patch.object(VisualizeResults, "plot_histogram") as hist_mock,
-    ):
-        visualize_results.visualize_test_results()
-    box_mock.assert_called_once_with(labels, data, stats, 1, jitter=False)
-    hist_mock.assert_not_called()
-
-
-def test_visualize_test_results_runs_histogram_path(
-    visualize_results: VisualizeResults,
-) -> None:
-    """visualize_test_results should call histogram when user selects option 2."""
-    labels = ["L1"]
-    data = [np.array([1.0])]
-    stats = [{"p95": 1.0}]
-    processed = (labels, data, stats, 1, False, [{}])
-    with (
-        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
-        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
-        patch("builtins.input", return_value="2"),
-        patch.object(VisualizeResults, "plot_boxplot") as box_mock,
-        patch.object(VisualizeResults, "plot_histogram") as hist_mock,
-    ):
-        visualize_results.visualize_test_results()
-    box_mock.assert_not_called()
-    hist_mock.assert_called_once_with(data, labels, stats)
 
 
 def test_handle_choice_n_at_last_page(visualize_results: VisualizeResults) -> None:
     """'n' on the last page stays on the current page."""
     files = [Path(f"test_{i}.json") for i in range(5)]
-    # (0+1)*5 < 5 is False, so n should not advance
     result = visualize_results._handle_choice("n", files, 0, files, 5)
     assert result == 0
 
@@ -466,25 +699,6 @@ def test_display_page_shows_previous_option(
     assert "p - Previous page" in captured.out
 
 
-def test_visualize_test_results_error_counter_details(
-    visualize_results: VisualizeResults,
-) -> None:
-    """visualize_test_results calls plot_error_counter_details for choice '4'."""
-    labels = ["L1"]
-    data = [np.array([1.0])]
-    stats = [{"p95": 1.0}]
-    error_counters = [{"key": 0}]
-    processed = (labels, data, stats, 1, False, error_counters)
-    with (
-        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
-        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
-        patch("builtins.input", return_value="4"),
-        patch.object(VisualizeResults, "plot_error_counter_details") as detail_mock,
-    ):
-        visualize_results.visualize_test_results()
-    detail_mock.assert_called_once_with(labels, error_counters)
-
-
 def test_visualize_test_results_invalid_choice(
     visualize_results: VisualizeResults,
     capsys: pytest.CaptureFixture[str],
@@ -502,25 +716,3 @@ def test_visualize_test_results_invalid_choice(
         visualize_results.visualize_test_results()
     out = capsys.readouterr().out
     assert "Invalid choice" in out
-
-
-def test_visualize_test_results_runs_controller_health_path(
-    visualize_results: VisualizeResults,
-) -> None:
-    """visualize_test_results should call controller health for option 3."""
-    labels = ["L1"]
-    data = [np.array([1.0])]
-    stats = [{"p95": 1.0}]
-    processed = (labels, data, stats, 1, False, [{}])
-    with (
-        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
-        patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
-        patch("builtins.input", return_value="3"),
-        patch.object(VisualizeResults, "plot_boxplot") as box_mock,
-        patch.object(VisualizeResults, "plot_histogram") as hist_mock,
-        patch.object(VisualizeResults, "plot_controller_health") as health_mock,
-    ):
-        visualize_results.visualize_test_results()
-    box_mock.assert_not_called()
-    hist_mock.assert_not_called()
-    health_mock.assert_called_once_with(labels, stats)

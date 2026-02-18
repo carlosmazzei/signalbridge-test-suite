@@ -14,7 +14,7 @@ from base_test import STATISTICS_DISPLAY_NAMES, STATUS_ERROR_KEYS
 from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
 
-setup_logging()
+# setup_logging() removed to prevent side effects on import
 
 logger = logging.getLogger(__name__)
 
@@ -770,3 +770,9 @@ class VisualizeResults:
     def execute_visualization(self) -> None:
         """Execute visualization."""
         self.visualize_test_results()
+
+
+if __name__ == "__main__":
+    setup_logging()
+    visualizer = VisualizeResults()
+    visualizer.visualize_test_results()
