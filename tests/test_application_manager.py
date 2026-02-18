@@ -149,25 +149,38 @@ def test_app_manager_initial_mode_and_exit_key() -> None:
     assert am.exit_key == "7"  # keys 1..6 defined above, exit is last+1
 
 
-def test_display_menu_contains_expected_labels(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Menu text should contain the static labels for each option."""
-    with patch("application_manager.SerialInterface"):
-        am = ApplicationManager("P", 9600, 0.1)
-    # Make all modules available
-    for cfg in am.module_configs:
-        am.modules[cfg.mode] = object()
-    am.connected = True
-    am.display_menu()
-    out = capsys.readouterr().out
-    assert "0. Disconnect from device" in out
-    assert "1. Run latency test" in out
-    assert "2. Send command" in out
-    assert "3. Regression test" in out
-    assert "4. Visualize test results" in out
-    assert "5. Status mode" in out
-    assert f"{am.exit_key}. Exit" in out
+def test_menu_items_structure(app_manager: ApplicationManager) -> None:
+    """Verify menu items are correctly constructed from config."""
+    items = app_manager.menu_items
+
+    # Should have: Connect/Disconnect (0) + 6 modules + Exit
+    assert len(items) == 8  # noqa: PLR2004
+
+    # 1. Connect/Disconnect
+    assert items[0].key == "0"
+    # Description is a lambda, check both states
+    app_manager.connected = False
+    assert items[0].description() == "Connect to device"
+    app_manager.connected = True
+    assert items[0].description() == "Disconnect from device"
+
+    # 2. Modules (verify keys match config)
+    # Map key to description
+    item_map = {
+        item.key: item.description() for item in items if item.key not in ("0", "7")
+    }
+
+    assert item_map["1"] == "Run latency test"
+    assert item_map["2"] == "Send command"
+    assert item_map["3"] == "Regression test"
+    assert item_map["4"] == "Visualize test results"
+    assert item_map["5"] == "Status mode"
+    assert item_map["6"] == "Baud rate sweep test"
+
+    # 3. Exit
+    exit_item = items[-1]
+    assert exit_item.key == "7"
+    assert exit_item.description() == "Exit"
 
 
 def test_display_menu_some_modules(
@@ -222,6 +235,50 @@ def test_module_configs_builder_wiring(app_manager: ApplicationManager) -> None:
 
         _ = cfg_by_mode[Mode.BAUD_SWEEP].builder()
         baud_cls.assert_called_once_with(app_manager.serial_interface)
+
+
+def test_module_configs_complete_definition(app_manager: ApplicationManager) -> None:
+    """Verify all module configurations have correct static properties."""
+    configs = {cfg.mode: cfg for cfg in app_manager.module_configs}
+
+    # 1. Latency
+    cfg = configs[Mode.LATENCY]
+    assert cfg.key == "1"
+    assert cfg.description == "Run latency test"
+    assert cfg.requires_serial is True
+
+    # 2. Command
+    cfg = configs[Mode.COMMAND]
+    assert cfg.key == "2"
+    assert cfg.description == "Send command"
+    assert cfg.requires_serial is True
+
+    # 3. Regression
+    cfg = configs[Mode.REGRESSION]
+    assert cfg.key == "3"
+    assert cfg.description == "Regression test"
+    assert cfg.requires_serial is True
+
+    # 4. Visualize
+    cfg = configs[Mode.VISUALIZE]
+    assert cfg.key == "4"
+    assert cfg.description == "Visualize test results"
+    assert cfg.requires_serial is False
+
+    # 5. Status
+    cfg = configs[Mode.STATUS]
+    assert cfg.key == "5"
+    assert cfg.description == "Status mode"
+    assert cfg.requires_serial is True
+
+    # 6. Baud Sweep
+    cfg = configs[Mode.BAUD_SWEEP]
+    assert cfg.key == "6"
+    assert cfg.description == "Baud rate sweep test"
+    assert cfg.requires_serial is True
+
+    # Verify no unexpected modes
+    assert len(configs) == 6  # noqa: PLR2004
 
 
 def test_module_configs_runner_and_handler_wiring(
