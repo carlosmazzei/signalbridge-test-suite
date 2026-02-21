@@ -23,6 +23,7 @@ A comprehensive Python testing suite for the SignalBridge controller, featuring 
 - [SignalBridge breakout board](https://github.com/carlosmazzei/signalbridge-board) - Hardware design
 - [SignalBridge test suite](https://github.com/carlosmazzei/signalbridge-test-suite) - This repository
 - [SignalBridge firmware](https://github.com/carlosmazzei/signalbridge-controller) - Embedded C firmware
+- [Firmware stress-test improvement plan](docs/firmware_stress_test_plan.md) - roadmap to harden robustness validation
 
 ## 🚀 Quick Start
 
