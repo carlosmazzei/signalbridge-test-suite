@@ -213,7 +213,7 @@ These constants are class attributes on `SerialInterface` and must not be duplic
 
 ### Python version and tooling
 
-- Target: **Python 3.14**. Use `from __future__ import annotations` at the top of every module to enable PEP 563 postponed evaluation of annotations.
+- Target: **Python 3.13**. Use `from __future__ import annotations` at the top of every module to enable PEP 563 postponed evaluation of annotations.
 - Linter/formatter: **ruff** with `select = ["ALL"]`. Run `ruff check src/ && ruff format src/` before committing. Resolve all warnings; do not suppress rules without a comment explaining why.
 - Pre-commit hooks run ruff, pytest, and mutmut automatically.
 

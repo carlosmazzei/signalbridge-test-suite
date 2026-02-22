@@ -261,7 +261,7 @@ def test_set_baudrate_success() -> None:
         result = si.set_baudrate(921600)
 
     assert result is True
-    assert si.baudrate == 921600  # noqa: PLR2004
+    assert si.baudrate == 921600
 
 
 def test_set_baudrate_failure() -> None:
@@ -275,4 +275,4 @@ def test_set_baudrate_failure() -> None:
         result = si.set_baudrate(921600)
 
     assert result is False
-    assert si.baudrate == 921600  # noqa: PLR2004
+    assert si.baudrate == 921600

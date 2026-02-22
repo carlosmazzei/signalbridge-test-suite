@@ -70,12 +70,12 @@ def test_baud_rate_test_sweeps_rates_and_writes_output() -> None:
     assert len(out) == len(baud_rates)
     for i, item in enumerate(out):
         assert item["baudrate"] == baud_rates[i]
-        assert item["samples"] == 3  # noqa: PLR2004
+        assert item["samples"] == 3
         assert isinstance(item["bitrate"], float)
         assert "results" in item
         assert item["outstanding_messages"] == [1, 2, 3]
-        assert item["outstanding_max"] == 3  # noqa: PLR2004
-        assert item["outstanding_final"] == 3  # noqa: PLR2004
+        assert item["outstanding_max"] == 3
+        assert item["outstanding_final"] == 3
         assert "status_before" in item
         assert "status_after" in item
         assert "status_delta" in item
@@ -130,10 +130,10 @@ def test_baud_rate_test_skips_failed_baudrate() -> None:
 
     out = captured["data"]
     assert len(out) == 1
-    assert out[0]["baudrate"] == 115200  # noqa: PLR2004
+    assert out[0]["baudrate"] == 115200
     assert out[0]["outstanding_messages"] == [1, 2]
-    assert out[0]["outstanding_max"] == 2  # noqa: PLR2004
-    assert out[0]["outstanding_final"] == 2  # noqa: PLR2004
+    assert out[0]["outstanding_max"] == 2
+    assert out[0]["outstanding_final"] == 2
     assert "status_before" in out[0]
     assert "status_after" in out[0]
     assert "status_delta" in out[0]

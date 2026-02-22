@@ -187,7 +187,7 @@ class SerialInterface:
             self.statistics.commands_received[command] += 1
             if self.message_handler:
                 self.message_handler(command, decoded_data, byte_string)
-        except IndexError, cobs.DecodeError:
+        except (IndexError, cobs.DecodeError):  # fmt: skip
             logger.exception("Error processing message")
 
     def _handle_received_data(self, data: bytes, max_message_size: int) -> None:

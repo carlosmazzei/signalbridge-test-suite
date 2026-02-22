@@ -16,6 +16,8 @@ from logger_config import setup_logging
 from regression_test import RegressionTest
 from serial_interface import SerialInterface
 from status_mode import StatusMode
+from stress_config import default_stress_config
+from stress_test import StressTest
 from visualize_results import VisualizeResults
 
 if TYPE_CHECKING:
@@ -36,6 +38,7 @@ class Mode(Enum):
     VISUALIZE = 4
     STATUS = 5
     BAUD_SWEEP = 6
+    STRESS = 7
 
 
 @dataclass
@@ -110,9 +113,8 @@ class ApplicationManager:
                 key="4",
                 mode=Mode.VISUALIZE,
                 description="Visualize test results",
-                builder=lambda: VisualizeResults(),  # noqa: PLW0108
+                builder=lambda: VisualizeResults(),  # noqa: PLW0108  # lambda needed to support mock patching during tests
                 runner=lambda module: module.execute_visualization(),
-                handler=None,
                 requires_serial=False,
             ),
             ModuleConfig(
@@ -131,6 +133,18 @@ class ApplicationManager:
                 description="Baud rate sweep test",
                 builder=lambda: BaudRateTest(self.serial_interface),
                 runner=lambda module: module.execute_baud_test(),
+                handler=lambda module, command, data, _unused: module.handle_message(
+                    command, data
+                ),
+            ),
+            ModuleConfig(
+                key="7",
+                mode=Mode.STRESS,
+                description="Stress test (automated scenarios)",
+                builder=lambda: StressTest(
+                    self.serial_interface, default_stress_config()
+                ),
+                runner=lambda module: module.execute_test(),
                 handler=lambda module, command, data, _unused: module.handle_message(
                     command, data
                 ),

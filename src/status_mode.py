@@ -8,45 +8,16 @@ from dataclasses import dataclass
 from tabulate import tabulate
 
 from base_test import (
+    STATISTICS_DISPLAY_NAMES,
     STATISTICS_HEADER_BYTES,
     STATISTICS_ITEMS,
+    TASK_DISPLAY_NAMES,
     TASK_HEADER_BYTES,
     TASK_ITEMS,
 )
 from serial_interface import SerialCommand, SerialInterface
 
 logger = logging.getLogger(__name__)
-
-# Display-friendly names for statistics items (keyed by STATISTICS_ITEMS name)
-STATISTICS_DISPLAY_NAMES: dict[str, str] = {
-    "queue_send_error": "Queue Send Error",
-    "queue_receive_error": "Queue Receive Error",
-    "cdc_queue_send_error": "CDC Queue Receive Error",
-    "display_out_error": "Display Output Error",
-    "led_out_error": "LED Output Error",
-    "watchdog_error": "Watchdog Error",
-    "msg_malformed_error": "Malformed Message Error",
-    "cobs_decode_error": "Cobs Decode Error",
-    "receive_buffer_overflow_error": "Receive Buffer Overflow",
-    "checksum_error": "Checksum Error",
-    "buffer_overflow_error": "Buffer Overflow Error",
-    "unknown_cmd_error": "Unknown Command Error",
-    "bytes_sent": "Number of Bytes sent",
-    "bytes_received": "Number of Bytes received",
-}
-
-# Display-friendly names for task items (keyed by TASK_ITEMS name)
-TASK_DISPLAY_NAMES: dict[str, str] = {
-    "cdc_task": "CDC Task",
-    "cdc_write_task": "CDC Write Task",
-    "uart_event_task": "UART handling",
-    "decode_reception_task": "Decode reception",
-    "process_outbound_task": "Inbound process",
-    "adc_read_task": "ADC read",
-    "keypad_task": "Key read",
-    "encoder_read_task": "Encoder read",
-    "idle_task": "Idle",
-}
 
 # Reverse lookup: name -> index for TASK_ITEMS
 _TASK_INDEX_BY_NAME = {name: idx for idx, name in TASK_ITEMS.items()}
@@ -108,9 +79,7 @@ class StatusMode:
                     error_item.value = status_value
                     error_item.last_updated = time.time()
                     self.logger.info(
-                        "%s value updated to %d",
-                        error_item.message,
-                        error_item.value,
+                        "%s value updated to %d", error_item.message, error_item.value
                     )
             elif command == SerialCommand.TASK_STATUS_COMMAND.value:
                 status_index = decoded_data[3]
@@ -162,8 +131,7 @@ class StatusMode:
             self._status_update(STATISTICS_HEADER_BYTES, index)
             time.sleep(0.1)
             self.logger.info(
-                "[%s] status update requested",
-                self.error_items[index].message,
+                "[%s] status update requested", self.error_items[index].message
             )
 
         self.logger.info("Status request complete")
@@ -174,8 +142,7 @@ class StatusMode:
             self._status_update(TASK_HEADER_BYTES, index)
             time.sleep(0.1)
             self.logger.info(
-                "[%s] status update requested",
-                self.task_items[index].name,
+                "[%s] status update requested", self.task_items[index].name
             )
 
         self.logger.info("Status request complete")

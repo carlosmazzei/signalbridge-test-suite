@@ -10,7 +10,7 @@
 [![Tests](https://github.com/carlosmazzei/signalbridge-test-suite/actions/workflows/lint.yml/badge.svg)](https://github.com/carlosmazzei/signalbridge-test-suite/actions/workflows/lint.yml)
 [![Coverage](https://codecov.io/gh/carlosmazzei/signalbridge-test-suite/branch/main/graph/badge.svg)](https://codecov.io/gh/carlosmazzei/signalbridge-test-suite)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 A comprehensive Python testing suite for the SignalBridge controller, featuring UART latency measurement, command interface, regression testing, system monitoring, and statistical visualization. Designed for testing embedded systems communication with high precision and detailed performance analysis.
@@ -23,6 +23,7 @@ A comprehensive Python testing suite for the SignalBridge controller, featuring 
 - [SignalBridge breakout board](https://github.com/carlosmazzei/signalbridge-board) - Hardware design
 - [SignalBridge test suite](https://github.com/carlosmazzei/signalbridge-test-suite) - This repository
 - [SignalBridge firmware](https://github.com/carlosmazzei/signalbridge-controller) - Embedded C firmware
+- [Firmware stress-test improvement plan](docs/firmware_stress_test_plan.md) - roadmap to harden robustness validation
 
 ## 🚀 Quick Start
 
@@ -40,7 +41,7 @@ python src/main.py
 
 ### Option 2: Manual Setup
 
-1. **Install Python 3.14+:**
+1. **Install Python 3.13+:**
    Download from [python.org](https://www.python.org/downloads/)
 
 2. **Clone and Setup:**
@@ -93,7 +94,7 @@ python src/main.py
 
 ### Software Requirements
 
-- **Python**: 3.14 or higher
+- **Python**: 3.13 or higher
 - **Serial Port**: Access to `/dev/cu.usbmodem1234561` (configurable)
 - **Display**: For visualization features (matplotlib)
 
@@ -487,7 +488,7 @@ signalbridge-test-suite/
 
 #### Prerequisites
 
-- Python 3.14+
+- Python 3.13+
 - pip package manager
 - Virtual environment support
 - Serial port access permissions
