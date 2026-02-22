@@ -137,7 +137,7 @@ class BaudRateTest(BaseTest):
         print(f"Default baud rates: {DEFAULT_BAUD_RATES}")
         use_default = self._get_user_input(
             "(1/4) Use default baud rates? (True/False)",
-            True,  # noqa: FBT003
+            default=True,
         )
 
         if use_default:
@@ -169,7 +169,7 @@ class BaudRateTest(BaseTest):
         message_length = self._get_user_input(
             "(4/4) Enter message length (min 6 to max 10)", DEFAULT_MESSAGE_LENGTH
         )
-        if message_length < 6 or message_length > 10:  # noqa: PLR2004
+        if message_length < 6 or message_length > 10:  # noqa: PLR2004  # 6 and 10 are COBS overhead bounds
             message_length = DEFAULT_MESSAGE_LENGTH
             logger.info("Invalid message length. Using default value.")
 

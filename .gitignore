@@ -1,12 +1,15 @@
 # VS COde
 .vscode
 .DS_Store
+.claude
+.mutmut-cache*
 
 # Remove test results folder
 /test_results
 /tests/coverage
 /tests/coverage.xml
 mutants/
+mutation_testing/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -103,7 +103,7 @@ def test_status_update_builds_payload_and_writes() -> None:
     (payload,), _ = sm.ser.write.call_args  # pyright: ignore[reportAttributeAccessIssue]
     assert payload[:2] == STATISTICS_HEADER_BYTES
     assert payload[2] == 0x01
-    assert payload[3] == 5  # noqa: PLR2004
+    assert payload[3] == 5
 
 
 def test_update_statistics_status_requests_all(

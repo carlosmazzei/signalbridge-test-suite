@@ -10,6 +10,36 @@ import pytest
 from visualize_results import VisualizeResults
 
 
+@pytest.fixture(autouse=True)
+def prevent_infinite_loops(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Prevent infinite loops in select_test_file during mutation testing.
+    Mutmut might mutate the loop's exit condition, causing the test to hang until timeout.
+    This fixture bounds the number of loop iterations.
+    """
+    original_handle_choice = VisualizeResults._handle_choice
+    call_count = 0
+
+    def mock_handle_choice(
+        self: VisualizeResults,
+        choice: str,
+        page_files: list[Path],
+        current_page: int,
+        files: list[Path],
+        page_size: int,
+    ) -> Path | int | None:
+        nonlocal call_count
+        call_count += 1
+        if call_count > 100:  # Arbitrary limit, plenty for any normal test
+            msg = "Infinite loop detected during test"
+            raise RuntimeError(msg)
+        return original_handle_choice(
+            self, choice, page_files, current_page, files, page_size
+        )
+
+    monkeypatch.setattr(VisualizeResults, "_handle_choice", mock_handle_choice)
+
+
 @pytest.fixture
 def visualize_results() -> VisualizeResults:
     """Fixture for the visualize_results module."""
@@ -59,7 +89,7 @@ def test_load_and_process_data_valid(visualize_results: VisualizeResults) -> Non
         assert len(test_data) == 1
         assert len(stats_data) == 1
         assert len(error_counters) == 1
-        assert samples == 10  # noqa: PLR2004
+        assert samples == 10
         assert jitter is False
 
 
@@ -68,6 +98,68 @@ def test_load_and_process_data_invalid(visualize_results: VisualizeResults) -> N
     with patch("builtins.open", mock_open(read_data="{}")):
         result = visualize_results.load_and_process_data(Path("test.json"))
         assert result is None
+
+
+def test_visualize_stress_run(visualize_results: VisualizeResults) -> None:
+    """Test that _visualize_stress_run parses stress data and calls matplotlib."""
+    mock_data = {
+        "run_id": "1234",
+        "overall_verdict": "PASS",
+        "scenarios": [
+            {
+                "name": "echo_burst",
+                "drop_ratio": 0.0,
+                "p95_ms": 10.5,
+                "status_delta": {"statistics": {"cobs_decode_error": 5}},
+                "verdict": "PASS",
+                "failure_reasons": [],
+            },
+            {
+                "name": "bad_scenario",
+                "drop_ratio": 1.0,
+                "p95_ms": 100.0,
+                "status_delta": {"cobs_decode_error": 10},
+                "verdict": "FAIL",
+                "failure_reasons": ["Too many dropped"],
+            },
+        ],
+    }
+    with (
+        patch("visualize_results.plt.subplots") as mock_subplots,
+        patch("visualize_results.plt.tight_layout"),
+        patch("visualize_results.plt.subplots_adjust"),
+        patch("visualize_results.plt.show"),
+    ):
+        mock_fig = Mock()
+        mock_ax1 = Mock()
+        mock_ax2 = Mock()
+        mock_ax3 = Mock()
+
+        def make_bar_mock():
+            m = Mock()
+            m.get_x.return_value = 0.0
+            m.get_width.return_value = 0.8
+            m.get_height.return_value = 10.0
+            return m
+
+        mock_ax1.bar.return_value = [make_bar_mock(), make_bar_mock()]
+        mock_ax2.bar.return_value = [make_bar_mock(), make_bar_mock()]
+        mock_ax3.bar.return_value = [make_bar_mock(), make_bar_mock()]
+        mock_subplots.return_value = (mock_fig, (mock_ax1, mock_ax2, mock_ax3))
+
+        # Test valid data
+        visualize_results._visualize_stress_run(mock_data)
+
+        # Verify subplots were called
+        mock_subplots.assert_called_once_with(3, 1, figsize=(10, 12))
+        mock_ax1.bar.assert_called_once()
+        mock_ax2.bar.assert_called_once()
+        mock_ax3.bar.assert_called_once()
+
+    # Test empty scenarios
+    with patch("visualize_results.logger.info") as mock_log:
+        visualize_results._visualize_stress_run({"scenarios": []})
+        mock_log.assert_called_with("No scenarios found in stress result.")
 
 
 def test_plot_boxplot(visualize_results: VisualizeResults) -> None:
@@ -116,8 +208,26 @@ def test_plot_boxplot(visualize_results: VisualizeResults) -> None:
 
         # Verify plotting calls
         mock_ax1.boxplot.assert_called_once()
-        mock_ax1.set_title.assert_called()
-        mock_ax2.bar.assert_called()  # Should be called for dropped messages, etc.
+        args, kwargs = mock_ax1.boxplot.call_args
+        assert kwargs["showmeans"] is True
+        assert kwargs["patch_artist"] is True
+
+        mock_ax1.set_title.assert_called_with(
+            f"Latency Percentiles (Samples = {samples})", fontsize=10
+        )
+        mock_ax1.set_ylabel.assert_called_with("Latency (ms) - Log Scale")
+        mock_ax1.set_yscale.assert_called_with("log")
+
+        # Verify bar charts were created with exact kwargs
+        assert mock_ax2.bar.call_count == 3
+        bar_calls = mock_ax2.bar.call_args_list
+        assert bar_calls[0].kwargs["label"] == "Dropped"
+        assert bar_calls[0].kwargs["alpha"] == 0.85
+        assert bar_calls[1].kwargs["label"] == "Status Δ Errors"
+        assert bar_calls[1].kwargs["alpha"] == 0.85
+        assert bar_calls[2].kwargs["label"] == "Backlog End"
+        assert bar_calls[2].kwargs["alpha"] == 0.85
+
         mock_show.assert_called_once()
 
 
@@ -142,8 +252,25 @@ def test_plot_histogram(visualize_results: VisualizeResults) -> None:
 
         visualize_results.plot_histogram(test_data, labels, stats_data)
 
+        # Verify histogram plotting
         mock_ax.hist.assert_called_once()
-        mock_ax.axvline.assert_called()  # Check p95 line
+        hist_args, hist_kwargs = mock_ax.hist.call_args
+        np.testing.assert_array_equal(hist_args[0], test_data[0])
+        assert hist_kwargs["bins"] == 50
+        assert hist_kwargs["alpha"] == 0.75
+        assert hist_kwargs["label"] == "T1"
+        assert hist_kwargs["color"] == "red"
+        assert hist_kwargs["histtype"] == "stepfilled"
+
+        # Verify p95 line plot
+        mock_ax.axvline.assert_called_once_with(
+            stats_data[0]["p95"], color="red", linestyle="--", alpha=1.0
+        )
+
+        # Verify text and labels
+        mock_ax.set_title.assert_called_with("T1", fontsize=10)
+        mock_ax.set_xlabel.assert_called_with("Latency (ms)")
+
         mock_show.assert_called_once()
 
 
@@ -177,26 +304,63 @@ def test_plot_controller_health(visualize_results: VisualizeResults) -> None:
 
         visualize_results.plot_controller_health(labels, stats_data)
 
-        mock_ax1.bar.assert_called_once()  # Error delta bar chart
-        mock_ax2.plot.assert_called()  # Backlog plots
+        # Verify bar chart (Error Delta)
+        mock_ax1.bar.assert_called_once()
+        bar_args, bar_kwargs = mock_ax1.bar.call_args
+        np.testing.assert_array_equal(bar_args[0], np.arange(2))
+        assert bar_args[1] == [0.0, 3.0]
+        assert bar_kwargs["color"] == "tab:red"
+        assert bar_kwargs["alpha"] == 0.85
+
+        mock_ax1.set_ylabel.assert_called_with("Status Error Δ")
+        mock_ax1.set_title.assert_called_with("Error Delta per Series", fontsize=10)
+
+        # Verify line plots (Backlog)
+        assert mock_ax2.plot.call_count == 2
+        plot_calls = mock_ax2.plot.call_args_list
+
+        # Backlog End
+        pe_args = plot_calls[0].args
+        pe_kwargs = plot_calls[0].kwargs
+        np.testing.assert_array_equal(pe_args[0], np.arange(2))
+        assert pe_args[1] == [1.0, 4.0]
+        assert pe_kwargs["marker"] == "o"
+        assert pe_kwargs["linestyle"] == "-"
+        assert pe_kwargs["linewidth"] == 1.5
+        assert pe_kwargs["label"] == "Backlog End"
+
+        # Backlog Max
+        pm_args = plot_calls[1].args
+        pm_kwargs = plot_calls[1].kwargs
+        np.testing.assert_array_equal(pm_args[0], np.arange(2))
+        assert pm_args[1] == [2.0, 5.0]
+        assert pm_kwargs["marker"] == "^"
+        assert pm_kwargs["linestyle"] == "--"
+        assert pm_kwargs["linewidth"] == 1.5
+        assert pm_kwargs["label"] == "Backlog Max"
+
+        mock_ax2.set_ylabel.assert_called_with("Outstanding Messages")
+        mock_ax2.set_title.assert_called_with("Backlog per Series", fontsize=10)
+
         mock_show.assert_called_once()
 
 
-def test_plot_error_counter_details(visualize_results: VisualizeResults) -> None:  # noqa: PLR0915
+def test_plot_error_counter_details(visualize_results: VisualizeResults) -> None:
     """Test plot_error_counter_details method."""
-    from base_test import STATISTICS_DISPLAY_NAMES, STATUS_ERROR_KEYS  # noqa: PLC0415
+    from base_test import STATISTICS_DISPLAY_NAMES, STATUS_ERROR_KEYS
 
-    labels = ["t0"]
+    labels = ["t0", "t1"]
     # Logic requires non-zero errors to plot. Use a key from the actual set.
     error_key = next(iter(STATUS_ERROR_KEYS))
     error_key_display = STATISTICS_DISPLAY_NAMES.get(error_key, error_key)
-    error_counters = [{error_key: 5}]
+    # Give one series an error, and the other explicitly no errors to catch `get` mutants
+    error_counters = [{error_key: 5}, {error_key: 0}]
 
     with (
         patch("matplotlib.pyplot.figure") as mock_figure,
         patch("matplotlib.pyplot.show") as mock_show,
         # Mock cm.get_cmap because it's used in this method
-        patch("visualize_results.cm.get_cmap", return_value=lambda _: ["red"]),
+        patch("visualize_results.cm.get_cmap", return_value=lambda _: ["red", "blue"]),
         patch("matplotlib.pyplot.colorbar") as mock_colorbar,
     ):
         mock_fig = Mock()
@@ -227,17 +391,17 @@ def test_plot_error_counter_details(visualize_results: VisualizeResults) -> None
         )
 
         # --- Verify Subplot 1 (Stacked Bar) ---
-        mock_ax1.bar.assert_called()
+        assert mock_ax1.bar.call_count == 1
         args, kwargs = mock_ax1.bar.call_args
-        np.testing.assert_array_equal(args[0], np.arange(1))  # x
-        assert args[1] == [5]  # values
+        np.testing.assert_array_equal(args[0], np.arange(2))  # x
+        assert args[1] == [5, 0]  # values
         # Check specific cosmetic args to kill mutants
         assert kwargs["bottom"] is not None  # checking existence first
-        # verify bottom is [5.] because it was modified in-place after the call
-        np.testing.assert_array_equal(kwargs["bottom"], np.array([5.0]))
+        # verify bottom is updated in-place after the call
+        np.testing.assert_array_equal(kwargs["bottom"], np.array([5.0, 0.0]))
         assert kwargs["label"] == error_key_display
         assert kwargs["color"] == "red"
-        assert kwargs["alpha"] == 0.85  # noqa: PLR2004
+        assert kwargs["alpha"] == 0.85
 
         mock_ax1.set_ylabel.assert_called_with("Error Count (Δ)", fontsize=11)
         mock_ax1.set_title.assert_called_with(
@@ -256,9 +420,9 @@ def test_plot_error_counter_details(visualize_results: VisualizeResults) -> None
         )
 
         # --- Verify Subplot 2 (Heatmap) ---
-        mock_ax2.imshow.assert_called()
+        mock_ax2.imshow.assert_called_once()
         args, kwargs = mock_ax2.imshow.call_args
-        np.testing.assert_array_equal(args[0], np.array([[5]]))
+        np.testing.assert_array_equal(args[0], np.array([[5, 0]]))
         assert kwargs["aspect"] == "auto"
         assert kwargs["cmap"] == "YlOrRd"
         assert kwargs["interpolation"] == "nearest"
@@ -276,7 +440,7 @@ def test_plot_error_counter_details(visualize_results: VisualizeResults) -> None
         assert args[2] == "5"
         assert kwargs["ha"] == "center"
         assert kwargs["va"] == "center"
-        assert kwargs["fontsize"] == 8  # noqa: PLR2004
+        assert kwargs["fontsize"] == 8
         assert kwargs["fontweight"] == "bold"
         # Color logic check: 5 > 2.5 (max/2) -> white
         assert kwargs["color"] == "white"
@@ -290,7 +454,7 @@ def test_plot_error_counter_details(visualize_results: VisualizeResults) -> None
         expected_summary_parts = [
             "📊 Summary Statistics:",
             "Total errors across all series: 5",
-            "Series with errors: 1/1",
+            "Series with errors: 1/2",
             "Maximum errors in single series: 5",
             f"Most common error: {error_key_display} (5 occurrences)",
             "Unique error types detected: 1/20",  # 20 is len of STATUS_ERROR_KEYS
@@ -300,25 +464,25 @@ def test_plot_error_counter_details(visualize_results: VisualizeResults) -> None
 
         assert kwargs["ha"] == "center"
         assert kwargs["va"] == "center"
-        assert kwargs["fontsize"] == 10  # noqa: PLR2004
+        assert kwargs["fontsize"] == 10
         assert kwargs["family"] == "monospace"
         assert kwargs["bbox"]["edgecolor"] == "darkblue"
         assert kwargs["bbox"]["facecolor"] == "lightcyan"
-        assert kwargs["bbox"]["alpha"] == 0.9  # noqa: PLR2004
+        assert kwargs["bbox"]["alpha"] == 0.9
 
         # --- Verify Explanation Text ---
         # fig.text is called twice (one for title? No, fig.suptitle was used.
         # Ah, fig.text is used for "Variable Explanations" at the bottom)
         mock_fig.text.assert_called()
         args, kwargs = mock_fig.text.call_args
-        assert args[0] == 0.5  # noqa: PLR2004
-        assert args[1] == 0.01  # noqa: PLR2004
+        assert args[0] == 0.5
+        assert args[1] == 0.01
         assert "Variable Explanations" in args[2]
         assert kwargs["ha"] == "center"
-        assert kwargs["fontsize"] == 9  # noqa: PLR2004
+        assert kwargs["fontsize"] == 9
         assert kwargs["bbox"]["edgecolor"] == "green"
         assert kwargs["bbox"]["facecolor"] == "lightgreen"
-        assert kwargs["bbox"]["alpha"] == 0.7  # noqa: PLR2004
+        assert kwargs["bbox"]["alpha"] == 0.7
 
         mock_show.assert_called_once()
         mock_colorbar.assert_called()
@@ -443,7 +607,7 @@ def test_visualize_test_results_runs_error_details_path(
     visualize_results: VisualizeResults,
 ) -> None:
     """visualize_test_results should call real plot_error_counter_details."""
-    from base_test import STATUS_ERROR_KEYS  # noqa: PLC0415
+    from base_test import STATUS_ERROR_KEYS
 
     labels = ["L1"]
     # Must provide NON-ZERO errors to trigger plotting
@@ -561,7 +725,7 @@ def test_handle_choice_n_on_penultimate_page(
     """'n' on the second-to-last page advances one page (not two)."""
     files = [Path(f"test_{i}.json") for i in range(15)]
     result = visualize_results._handle_choice("n", files[5:10], 1, files, 5)
-    assert result == 2  # noqa: PLR2004
+    assert result == 2
 
 
 def test_handle_choice_digit_at_exact_length_boundary(
@@ -577,7 +741,7 @@ def test_get_total_pages(visualize_results: VisualizeResults) -> None:
     """Test for the _get_total_pages method."""
     files = [Path(f"test_{i}.json") for i in range(16)]
     result = visualize_results._get_total_pages(len(files), 5)
-    assert result == 4  # noqa: PLR2004
+    assert result == 4
 
 
 def test_visualize_test_results_returns_when_no_file_selected(
@@ -653,7 +817,7 @@ def test_status_error_delta_total_with_data(
     visualize_results: VisualizeResults,
 ) -> None:
     """_status_error_delta_total sums known error keys from status_delta.statistics."""
-    from base_test import STATUS_ERROR_KEYS  # noqa: PLC0415
+    from base_test import STATUS_ERROR_KEYS
 
     series: dict[str, object] = {
         "status_delta": {
@@ -661,7 +825,7 @@ def test_status_error_delta_total_with_data(
         }
     }
     result = visualize_results._status_error_delta_total(series)
-    assert result == 5  # noqa: PLR2004
+    assert result == 5
 
 
 def test_status_error_delta_total_no_status_delta(

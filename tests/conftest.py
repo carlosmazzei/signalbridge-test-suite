@@ -22,7 +22,14 @@ except (ImportError, AttributeError):  # fmt: skip
 
 MUTATED_MODULE_PATHS = (
     "src/application_manager.py",
+    "src/base_test.py",
+    "src/baud_rate_test.py",
     "src/checksum.py",
+    "src/command_mode.py",
+    "src/latency_test.py",
+    "src/regression_test.py",
+    "src/serial_interface.py",
+    "src/status_mode.py",
     "src/visualize_results.py",
 )
 
@@ -42,8 +49,11 @@ def _load_mutated_modules(mutants_root: Path) -> None:
 
 
 # Normal test imports are handled by pytest.ini (pythonpath = src).
-# In mutmut's subprocess (cwd=mutants), preload only mutated targets.
-if Path.cwd().name == "mutants" and "MUTANT_UNDER_TEST" in os.environ:
+# In mutmut's subprocess (cwd=mutants), preload the mutated source files so that
+# coverage is measured against mutants/src/ during BOTH the initial coverage-gathering
+# pass and individual mutant test runs. MUTANT_UNDER_TEST is only set during the
+# latter, so we must NOT gate on it — the condition must be cwd == 'mutants' only.
+if Path.cwd().name == "mutants":
     root_src = Path.cwd().parent / "src"
     if root_src.exists():
         sys.path.insert(0, str(root_src))

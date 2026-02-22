@@ -40,7 +40,7 @@ class LatencyTest(BaseTest):
         """Initialize Latency Test Class."""
         super().__init__(ser)
 
-    def main_test(  # noqa: PLR0913
+    def main_test(  # noqa: PLR0913  # Test execution requires many options
         self,
         num_times: int = DEFAULT_NUM_TIMES,
         max_wait: float = DEFAULT_MAX_WAIT,
@@ -88,7 +88,7 @@ class LatencyTest(BaseTest):
                     self.publish(i, length)
                     if jitter:
                         time.sleep(
-                            waiting_time + random.uniform(0, random_max),  # noqa: S311
+                            waiting_time + random.uniform(0, random_max),  # noqa: S311  # Jitter is not for cryptographic security
                         )
                     else:
                         time.sleep(waiting_time)
@@ -160,7 +160,7 @@ class LatencyTest(BaseTest):
         message_length = self._get_user_input(
             "(2/7) Enter message length (min 6 to max 10)", DEFAULT_MESSAGE_LENGTH
         )
-        if message_length < 6 or message_length > 10:  # noqa: PLR2004
+        if message_length < 6 or message_length > 10:  # noqa: PLR2004  # 6 and 10 are COBS overhead bounds
             message_length = DEFAULT_MESSAGE_LENGTH
             logger.info("Invalid message length. Using default value.")
 
@@ -197,7 +197,7 @@ class LatencyTest(BaseTest):
 
         jitter = self._get_user_input(
             "(7/7) Run test with jitter? (True/False)",
-            False,  # noqa: FBT003
+            default=False,
         )
         if not isinstance(jitter, bool):
             jitter = False

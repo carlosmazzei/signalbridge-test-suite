@@ -1,0 +1,27 @@
+[project]
+name = "signalbridge-test-suite"
+version = "0.1.0"
+description = "SignalBridge Test Suite"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alive-progress==3.3.0",
+    "cobs==1.2.2",
+    "matplotlib>=3.8.2",
+    "numpy>=2.2.1",
+    "pre-commit==4.5.1",
+    "pyserial==3.5",
+    "ruff==0.15.1",
+    "tabulate>=0.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.5",
+    "hypothesis>=6.112.0",
+    "mutmut>=3.2.2",
+    "pytest>=8.3.3",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "pytest-timeout>=2.3.1",
+]

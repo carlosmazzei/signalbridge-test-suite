@@ -8,68 +8,60 @@ jobs:
     name: "Lint & Format"
     runs-on: "ubuntu-latest"
     steps:
-        # Checkout the repository
-        - &checkout
-          name: "Checkout the repository"
-          uses: "actions/checkout@v6.0.2"
-        # Set up Python
-        - &setup-python
-          name: "Set up Python"
-          uses: "actions/setup-python@v6.2.0"
-          with:
-            python-version: "3.14"
-            cache: "pip"
-        # Install dependencies and run linter and formatter
-        - &install-dependencies
-          name: "Install dependencies"
-          run: pip install -r requirements.txt
-        # Run linter 
-        - name: "Lint"
-          run: python3 -m ruff check .
-        # Run formatter in check mode
-        - name: "Format"
-          run: python3 -m ruff format . --check
+      # Checkout the repository
+      - &checkout
+        name: "Checkout the repository"
+        uses: "actions/checkout@v6.0.2"
+      # Install uv and sync dependencies
+      - &setup-uv
+        name: "Set up uv"
+        uses: "astral-sh/setup-uv@v7"
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - &install-dependencies
+        name: "Install dependencies"
+        run: uv sync --all-groups
+      # Run linter
+      - name: "Lint"
+        run: uv run ruff check .
+      # Run formatter in check mode
+      - name: "Format"
+        run: uv run ruff format . --check
+
   unit-test:
     name: "Unit Test"
     runs-on: "ubuntu-latest"
     steps:
       # Checkout the repository
       - *checkout
-      # Set up Python
-      - *setup-python
-      # Install dependencies
+      # Install uv and sync dependencies
+      - *setup-uv
       - *install-dependencies
-      # Install test dependencies
-      - &install-test-dependencies
-        name: Install test dependencies
-        run: pip install -r requirements.test.txt
       # Run tests with coverage
-      - name: Run pytest
-        run: pytest --cov=src --cov-report=html:tests/coverage --cov-report=xml:tests/coverage.xml --cov-report=term-missing --cov-branch
+      - name: "Run pytest"
+        run: uv run pytest --cov=src --cov-report=html:tests/coverage --cov-report=xml:tests/coverage.xml --cov-report=term-missing --cov-branch
       # Upload coverage reports to Codecov
-      - name: Upload coverage reports to Codecov
+      - name: "Upload coverage reports to Codecov"
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+
   mutation-test:
     name: "Mutation Test"
     runs-on: "ubuntu-latest"
     steps:
-      # Run mutation tests with mutmut
+      # Checkout the repository
       - *checkout
-      # Set up Python
-      - *setup-python
-      # Install dependencies
+      # Install uv and sync dependencies
+      - *setup-uv
       - *install-dependencies
-      # Install test dependencies
-      - *install-test-dependencies
       # Run mutation tests
-      - name: Run mutmut (mutation tests)
+      - name: "Run mutmut (mutation tests)"
         env:
           MPLBACKEND: Agg
           PYTHONPATH: "${{ github.workspace }}/src"
-        run: |
-          mutmut run
+        run: uv run mutmut run
       # Show mutmut results
-      - name: Show mutmut results
-        run: mutmut results
+      - name: "Show mutmut results"
+        run: uv run mutmut results

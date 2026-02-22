@@ -3,25 +3,25 @@ repos:
     hooks:
       - id: ruff-lint
         name: Ruff linter
-        entry: scripts/precommit-ruff-lint.sh
+        entry: uv run ruff check --fix --exclude .pre-commit-cache
         language: system
         pass_filenames: false
 
       - id: ruff-format
         name: Ruff formatter
-        entry: scripts/precommit-ruff-format.sh
+        entry: uv run ruff format --exclude .pre-commit-cache
         language: system
         pass_filenames: false
 
       - id: pytest
         name: pytest
-        entry: scripts/precommit-pytest.sh
+        entry: uv run pytest -q
         language: system
         pass_filenames: false
 
       - id: mutmut
         name: Mutmut mutation tests
-        entry: scripts/precommit-mutmut.sh
+        entry: uv run mutmut run
         language: system
         stages: [manual]
         pass_filenames: false

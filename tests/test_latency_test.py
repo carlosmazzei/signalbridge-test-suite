@@ -288,7 +288,7 @@ def test_main_test_collects_and_writes_output() -> None:
 
     captured: dict[str, Any] = {}
 
-    def fake_write(file_path: Path, output_data: list[dict[str, Any]]) -> None:  # noqa: ARG001
+    def fake_write(file_path: Path, output_data: list[dict[str, Any]]) -> None:
         captured["data"] = output_data
 
     with (
@@ -313,19 +313,19 @@ def test_main_test_collects_and_writes_output() -> None:
     assert "data" in captured
     out = captured["data"]
     assert isinstance(out, list)
-    assert len(out) == 2  # noqa: PLR2004
+    assert len(out) == 2
     for item in out:
-        assert item["samples"] == 3  # noqa: PLR2004
+        assert item["samples"] == 3
         assert item["latency_avg"] == 0
         assert item["latency_min"] == 0
         assert item["latency_max"] == 0
         assert item["latency_p95"] == 0
-        assert item["dropped_messages"] == 3  # noqa: PLR2004
+        assert item["dropped_messages"] == 3
         assert isinstance(item["bitrate"], float)
         assert item["results"] == []
         assert item["outstanding_messages"] == [1, 2, 3]
-        assert item["outstanding_max"] == 3  # noqa: PLR2004
-        assert item["outstanding_final"] == 3  # noqa: PLR2004
+        assert item["outstanding_max"] == 3
+        assert item["outstanding_final"] == 3
         assert "status_before" in item
         assert "status_after" in item
         assert "status_delta" in item

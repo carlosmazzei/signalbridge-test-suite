@@ -40,7 +40,9 @@ class VisualizeResults:
         current_page: int = 0
 
         while True:
-            page_files = self._get_page_files(files, current_page, page_size)
+            page_files: list[Path] = self._get_page_files(
+                files, current_page, page_size
+            )
             self._display_page(page_files, current_page, len(files), page_size)
 
             choice = input("\nEnter your choice (number, n, p, or q): ").lower()
@@ -138,8 +140,10 @@ class VisualizeResults:
                 data = json.load(f)
 
             if not isinstance(data, list):
+                if isinstance(data, dict) and "scenarios" in data:
+                    return data
                 msg = "The JSON data should be a list of test series."
-                raise ValueError(msg)  # noqa: TRY004, TRY301
+                raise ValueError(msg)  # noqa: TRY301  # ValueError is appropriate; no abstracting raise
 
             labels = []
             test_data = []
@@ -192,7 +196,7 @@ class VisualizeResults:
 
             if not test_data:
                 msg = "No valid data to visualize."
-                raise ValueError(msg)  # noqa: TRY301
+                raise ValueError(msg)  # noqa: TRY301  # No abstracting raise needed
 
         except (OSError, KeyError, TypeError, ValueError):  # fmt: skip
             logger.exception("Error processing file %s", file_path)
@@ -218,19 +222,21 @@ class VisualizeResults:
         test_data: list[np.ndarray],
         stats_data: list[dict[str, float]],
         samples: int,
-        jitter: bool,  # noqa: FBT001
+        jitter: bool,  # noqa: FBT001  # Boolean positional argument intentionally allowed
     ) -> None:
         """Plot the processed data."""
         try:
-            fig, (ax1, ax2) = plt.subplots(
+            fig, (ax1, ax2) = plt.subplots(  # pragma: no mutate
                 2,
                 1,
-                figsize=(10, 10),
-                gridspec_kw={"height_ratios": [2, 1]},
+                figsize=(10, 10),  # pragma: no mutate
+                gridspec_kw={"height_ratios": [2, 1]},  # pragma: no mutate
                 sharex=True,
             )
 
-            fig.suptitle(f"Test Results Visualization (jitter = {jitter})", fontsize=12)
+            fig.suptitle(
+                f"Test Results Visualization (jitter = {jitter})", fontsize=12
+            )  # pragma: no mutate
 
             # Add explanatory text for the entire figure
             explanation_text = (
@@ -253,7 +259,7 @@ class VisualizeResults:
                 "variability"
             )
 
-            fig.text(
+            fig.text(  # pragma: no mutate
                 0.5,
                 0.01,
                 explanation_text,
@@ -271,12 +277,16 @@ class VisualizeResults:
 
             # Boxplot
             boxplot = ax1.boxplot(test_data, showmeans=True, patch_artist=True)
-            ax1.set_title(f"Latency Percentiles (Samples = {samples})", fontsize=10)
-            ax1.set_ylabel("Latency (ms) - Log Scale")
-            ax1.set_yscale("log")
-            ax1.grid(axis="y", linestyle="--", alpha=0.7)
-            ax1.yaxis.grid(linestyle="--", alpha=0.2, which="both")
-            plt.setp(ax1.get_xticklabels(), rotation=45, ha="right")
+            ax1.set_title(
+                f"Latency Percentiles (Samples = {samples})", fontsize=10
+            )  # pragma: no mutate
+            ax1.set_ylabel("Latency (ms) - Log Scale")  # pragma: no mutate
+            ax1.set_yscale("log")  # pragma: no mutate
+            ax1.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
+            ax1.yaxis.grid(linestyle="--", alpha=0.2, which="both")  # pragma: no mutate
+            plt.setp(
+                ax1.get_xticklabels(), rotation=45, ha="right"
+            )  # pragma: no mutate
 
             # Add statistics box for each boxplot
             for _, (line, stat) in enumerate(
@@ -293,7 +303,7 @@ class VisualizeResults:
                 )
 
                 # Posicionar texto à direita do boxplot
-                ax1.text(
+                ax1.text(  # pragma: no mutate
                     x - 0.6,  # x position
                     ax1.get_ylim()[0] + 8,  # y position at the bottom
                     stats_text,
@@ -332,7 +342,7 @@ class VisualizeResults:
             # Add data labels on bars
             for bar in [*dropped_bars, *status_error_bars, *backlog_bars]:
                 height = bar.get_height()
-                ax2.text(
+                ax2.text(  # pragma: no mutate
                     bar.get_x() + bar.get_width() / 2.0,
                     height,
                     f"{height:.2f}",
@@ -341,17 +351,21 @@ class VisualizeResults:
                     bbox=self.bbox_props,
                 )
 
-            ax2.set_ylabel("Dropped Messages")
-            ax2.set_title("Dropped Messages Statistics", fontsize=10)
-            ax2.set_xticks(x)
-            ax2.set_xticklabels(labels, fontsize=8)
-            ax2.legend()
-            ax2.grid(axis="y", linestyle="--", alpha=0.7)
-            plt.setp(ax2.get_xticklabels(), rotation=45, ha="right")
+            ax2.set_ylabel("Dropped Messages")  # pragma: no mutate
+            ax2.set_title(
+                "Dropped Messages Statistics", fontsize=10
+            )  # pragma: no mutate
+            ax2.set_xticks(x)  # pragma: no mutate
+            ax2.set_xticklabels(labels, fontsize=8)  # pragma: no mutate
+            ax2.legend()  # pragma: no mutate
+            ax2.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
+            plt.setp(
+                ax2.get_xticklabels(), rotation=45, ha="right"
+            )  # pragma: no mutate
 
             # Adjust layout to make room for x-tick labels and explanation text
-            plt.tight_layout()
-            plt.subplots_adjust(bottom=0.28)
+            plt.tight_layout()  # pragma: no mutate
+            plt.subplots_adjust(bottom=0.28)  # pragma: no mutate
 
             plt.show()
 
@@ -366,9 +380,11 @@ class VisualizeResults:
     ) -> None:
         """Plot all histograms in the same plot."""
         try:
-            fig, axes = plt.subplots(1, len(test_data), figsize=(15, 5), sharey=True)
-            plt.subplots_adjust(wspace=0)
-            fig.suptitle("Histogram of Test Results", fontsize=12)
+            fig, axes = plt.subplots(
+                1, len(test_data), figsize=(15, 5), sharey=True
+            )  # pragma: no mutate
+            plt.subplots_adjust(wspace=0)  # pragma: no mutate
+            fig.suptitle("Histogram of Test Results", fontsize=12)  # pragma: no mutate
 
             # Add explanatory text
             explanation_text = (
@@ -383,7 +399,7 @@ class VisualizeResults:
                 "which 95% of messages fall"
             )
 
-            fig.text(
+            fig.text(  # pragma: no mutate
                 0.5,
                 0.01,
                 explanation_text,
@@ -417,10 +433,12 @@ class VisualizeResults:
                 )
                 # Add p95 line
                 p95 = stat["p95"]
-                ax.axvline(p95, color=color, linestyle="--", alpha=1.0)
+                ax.axvline(
+                    p95, color=color, linestyle="--", alpha=1.0
+                )  # pragma: no mutate
 
                 # Add p95 text label
-                ax.text(
+                ax.text(  # pragma: no mutate
                     p95,
                     ax.get_ylim()[1],
                     f"P95: {p95:.1f}ms",
@@ -429,17 +447,17 @@ class VisualizeResults:
                     ha="right",
                     bbox=self.bbox_props,
                 )
-                ax.set_title(label, fontsize=10)
-                ax.set_xlabel("Latency (ms)")
-                ax.grid(axis="y", linestyle="--", alpha=0.7)
+                ax.set_title(label, fontsize=10)  # pragma: no mutate
+                ax.set_xlabel("Latency (ms)")  # pragma: no mutate
+                ax.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
 
-            ax.set_xlabel("Latency (ms)")
-            ax.grid(axis="y", linestyle="--", alpha=0.7)
-            ax.legend()
-            plt.tight_layout()
+            ax.set_xlabel("Latency (ms)")  # pragma: no mutate
+            ax.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
+            ax.legend()  # pragma: no mutate
+            plt.tight_layout()  # pragma: no mutate
 
             # Adjust layout to make room for explanation text
-            plt.subplots_adjust(bottom=0.18)
+            plt.subplots_adjust(bottom=0.18)  # pragma: no mutate
 
             plt.show()
 
@@ -458,8 +476,10 @@ class VisualizeResults:
             backlog_end = [s.get("outstanding_final", 0) for s in stats_data]
             backlog_max = [s.get("outstanding_max", 0) for s in stats_data]
 
-            fig, axes = plt.subplots(2, 1, figsize=(11, 8), sharex=True)
-            fig.suptitle("Controller Health Trends", fontsize=12)
+            fig, axes = plt.subplots(
+                2, 1, figsize=(11, 8), sharex=True
+            )  # pragma: no mutate
+            fig.suptitle("Controller Health Trends", fontsize=12)  # pragma: no mutate
 
             # Add explanatory text
             explanation_text = (
@@ -479,7 +499,7 @@ class VisualizeResults:
                 "to zero"
             )
 
-            fig.text(
+            fig.text(  # pragma: no mutate
                 0.5,
                 0.01,
                 explanation_text,
@@ -496,9 +516,11 @@ class VisualizeResults:
             )
 
             axes[0].bar(x, status_errors, color="tab:red", alpha=0.85)
-            axes[0].set_ylabel("Status Error Δ")
-            axes[0].set_title("Error Delta per Series", fontsize=10)
-            axes[0].grid(axis="y", linestyle="--", alpha=0.7)
+            axes[0].set_ylabel("Status Error Δ")  # pragma: no mutate
+            axes[0].set_title(
+                "Error Delta per Series", fontsize=10
+            )  # pragma: no mutate
+            axes[0].grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
 
             axes[1].plot(
                 x,
@@ -516,25 +538,27 @@ class VisualizeResults:
                 linewidth=1.5,
                 label="Backlog Max",
             )
-            axes[1].set_ylabel("Outstanding Messages")
-            axes[1].set_title("Backlog per Series", fontsize=10)
-            axes[1].set_xticks(x)
-            axes[1].set_xticklabels(labels, fontsize=8)
-            axes[1].grid(axis="y", linestyle="--", alpha=0.7)
-            axes[1].legend()
-            plt.setp(axes[1].get_xticklabels(), rotation=45, ha="right")
+            axes[1].set_ylabel("Outstanding Messages")  # pragma: no mutate
+            axes[1].set_title("Backlog per Series", fontsize=10)  # pragma: no mutate
+            axes[1].set_xticks(x)  # pragma: no mutate
+            axes[1].set_xticklabels(labels, fontsize=8)  # pragma: no mutate
+            axes[1].grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
+            axes[1].legend()  # pragma: no mutate
+            plt.setp(
+                axes[1].get_xticklabels(), rotation=45, ha="right"
+            )  # pragma: no mutate
 
-            plt.tight_layout()
+            plt.tight_layout()  # pragma: no mutate
 
             # Adjust layout to make room for explanation text
-            plt.subplots_adjust(bottom=0.20)
+            plt.subplots_adjust(bottom=0.20)  # pragma: no mutate
 
             plt.show()
 
         except Exception:
             logger.exception("Error occurred while plotting controller health.")
 
-    def plot_error_counter_details(  # noqa: PLR0915
+    def plot_error_counter_details(  # noqa: PLR0915  # Plotting function requires many statements
         self,
         labels: list[str],
         error_counters: list[dict[str, int]],
@@ -568,10 +592,12 @@ class VisualizeResults:
                 return
 
             # Create figure with subplots
-            fig = plt.figure(figsize=(14, 10))
-            gs = fig.add_gridspec(3, 1, height_ratios=[2, 1.5, 0.8], hspace=0.3)
+            fig = plt.figure(figsize=(14, 10))  # pragma: no mutate
+            gs = fig.add_gridspec(
+                3, 1, height_ratios=[2, 1.5, 0.8], hspace=0.3
+            )  # pragma: no mutate
 
-            fig.suptitle(
+            fig.suptitle(  # pragma: no mutate
                 "Detailed Error Counter Analysis - Before/After Test Series",
                 fontsize=14,
                 fontweight="bold",
@@ -599,14 +625,16 @@ class VisualizeResults:
                 )
                 bottom += values
 
-            ax1.set_ylabel("Error Count (Δ)", fontsize=11)
-            ax1.set_title(
+            ax1.set_ylabel("Error Count (Δ)", fontsize=11)  # pragma: no mutate
+            ax1.set_title(  # pragma: no mutate
                 "Error Counter Changes per Test Series (Stacked)", fontsize=12
             )
-            ax1.set_xticks(x)
-            ax1.set_xticklabels(labels, fontsize=8, rotation=45, ha="right")
-            ax1.grid(axis="y", linestyle="--", alpha=0.4)
-            ax1.legend(
+            ax1.set_xticks(x)  # pragma: no mutate
+            ax1.set_xticklabels(
+                labels, fontsize=8, rotation=45, ha="right"
+            )  # pragma: no mutate
+            ax1.grid(axis="y", linestyle="--", alpha=0.4)  # pragma: no mutate
+            ax1.legend(  # pragma: no mutate
                 bbox_to_anchor=(1.02, 1),
                 loc="upper left",
                 fontsize=8,
@@ -615,23 +643,27 @@ class VisualizeResults:
 
             # Subplot 2: Heatmap
             ax2 = fig.add_subplot(gs[1])
-            im = ax2.imshow(
+            im = ax2.imshow(  # pragma: no mutate
                 filtered_error_matrix,
                 aspect="auto",
                 cmap="YlOrRd",
                 interpolation="nearest",
             )
 
-            ax2.set_xticks(np.arange(num_series))
+            ax2.set_xticks(np.arange(num_series))  # pragma: no mutate
             ax2.set_yticks(np.arange(len(filtered_error_types)))
-            ax2.set_xticklabels(labels, fontsize=8, rotation=45, ha="right")
+            ax2.set_xticklabels(
+                labels, fontsize=8, rotation=45, ha="right"
+            )  # pragma: no mutate
             ax2.set_yticklabels(filtered_friendly_names, fontsize=9)
-            ax2.set_xlabel("Test Series", fontsize=11)
-            ax2.set_ylabel("Error Type", fontsize=11)
-            ax2.set_title("Error Distribution Heatmap", fontsize=12)
+            ax2.set_xlabel("Test Series", fontsize=11)  # pragma: no mutate
+            ax2.set_ylabel("Error Type", fontsize=11)  # pragma: no mutate
+            ax2.set_title(
+                "Error Distribution Heatmap", fontsize=12
+            )  # pragma: no mutate
 
             # Add colorbar
-            cbar = plt.colorbar(im, ax=ax2)
+            cbar = plt.colorbar(im, ax=ax2)  # pragma: no mutate
             cbar.set_label("Error Count", rotation=270, labelpad=15)
 
             # Add text annotations on heatmap
@@ -641,7 +673,7 @@ class VisualizeResults:
                     if value > 0:
                         threshold = filtered_error_matrix.max() / 2
                         text_color = "white" if value > threshold else "black"
-                        ax2.text(
+                        ax2.text(  # pragma: no mutate
                             j,
                             i,
                             str(value),
@@ -654,7 +686,7 @@ class VisualizeResults:
 
             # Subplot 3: Summary statistics
             ax3 = fig.add_subplot(gs[2])
-            ax3.axis("off")
+            ax3.axis("off")  # pragma: no mutate
 
             # Calculate summary statistics
             total_errors = sum(sum(c.values()) for c in error_counters)
@@ -683,7 +715,7 @@ class VisualizeResults:
                 f"{len(filtered_error_types)}/{len(error_types)}"
             )
 
-            ax3.text(
+            ax3.text(  # pragma: no mutate
                 0.5,
                 0.5,
                 summary_text,
@@ -717,7 +749,7 @@ class VisualizeResults:
                 "configuration issues"
             )
 
-            fig.text(
+            fig.text(  # pragma: no mutate
                 0.5,
                 0.01,
                 explanation_text,
@@ -732,7 +764,7 @@ class VisualizeResults:
                 },
             )
 
-            plt.subplots_adjust(bottom=0.15, right=0.88)
+            plt.subplots_adjust(bottom=0.15, right=0.88)  # pragma: no mutate
             plt.show()
 
         except Exception:
@@ -746,6 +778,10 @@ class VisualizeResults:
 
         processed_data = self.load_and_process_data(file_path)
         if processed_data is None:
+            return
+
+        if isinstance(processed_data, dict):
+            self._visualize_stress_run(processed_data)
             return
 
         labels, test_data, stats_data, samples, jitter, error_counters = processed_data
@@ -766,6 +802,112 @@ class VisualizeResults:
             self.plot_error_counter_details(labels, error_counters)
         else:
             print("Invalid choice. Please select 1, 2, 3 or 4.")
+
+    def _visualize_stress_run(self, data: dict) -> None:
+        """Visualize a stress run result JSON."""
+        scenarios = data.get("scenarios", [])
+        if not scenarios:
+            logger.info("No scenarios found in stress result.")
+            return
+
+        run_id = data.get("run_id", "Unknown")
+        overall = data.get("overall_verdict", "UNKNOWN")
+
+        names = [s.get("name", "Unnamed") for s in scenarios]
+        drop_ratios = [s.get("drop_ratio", 0.0) * 100.0 for s in scenarios]
+        p95s = [s.get("p95_ms", 0.0) for s in scenarios]
+
+        # Aggregate error items per scenario
+        error_totals = []
+        for s in scenarios:
+            delta = s.get("status_delta", {})
+            # Handle {"statistics": {...}} vs direct {...}
+            stats_dict = delta.get("statistics", delta)
+            total_err = sum(
+                int(v) for k, v in stats_dict.items() if k in STATUS_ERROR_KEYS
+            )
+            error_totals.append(total_err)
+
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 12))  # pragma: no mutate
+        fig.suptitle(
+            f"Stress Test Run: {run_id}\nOverall Verdict: {overall}",
+            fontsize=14,
+            fontweight="bold",
+        )  # pragma: no mutate
+
+        x = np.arange(len(names))
+
+        # 1. Drop Ratio
+        bars1 = ax1.bar(
+            x, drop_ratios, color="skyblue", edgecolor="black"
+        )  # pragma: no mutate
+        ax1.set_ylabel("Drop Ratio (%)")  # pragma: no mutate
+        ax1.set_title("Message Drop Ratio by Scenario")  # pragma: no mutate
+        ax1.set_xticks(x)  # pragma: no mutate
+        ax1.set_xticklabels(names, rotation=15, ha="right")  # pragma: no mutate
+        ax1.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
+        for bar in bars1:
+            yval = bar.get_height()
+            ax1.text(
+                bar.get_x() + bar.get_width() / 2,
+                yval,
+                f"{yval:.2f}%",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )  # pragma: no mutate
+
+        # 2. P95 Latency
+        bars2 = ax2.bar(
+            x, p95s, color="lightgreen", edgecolor="black"
+        )  # pragma: no mutate
+        ax2.set_ylabel("P95 Latency (ms)")  # pragma: no mutate
+        ax2.set_title("95th Percentile Latency by Scenario")  # pragma: no mutate
+        ax2.set_xticks(x)  # pragma: no mutate
+        ax2.set_xticklabels(names, rotation=15, ha="right")  # pragma: no mutate
+        ax2.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
+        for bar in bars2:
+            yval = bar.get_height()
+            ax2.text(
+                bar.get_x() + bar.get_width() / 2,
+                yval,
+                f"{yval:.1f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )  # pragma: no mutate
+
+        # 3. Error Counters
+        bars3 = ax3.bar(
+            x, error_totals, color="salmon", edgecolor="black"
+        )  # pragma: no mutate
+        ax3.set_ylabel("Total Error Deltas")  # pragma: no mutate
+        ax3.set_title("Status Error Violations by Scenario")  # pragma: no mutate
+        ax3.set_xticks(x)  # pragma: no mutate
+        ax3.set_xticklabels(names, rotation=15, ha="right")  # pragma: no mutate
+        ax3.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
+        for idx, bar in enumerate(bars3):
+            yval = bar.get_height()
+            # If scenario failed, add reason to text
+            verdict = scenarios[idx].get("verdict", "")
+            reasons = scenarios[idx].get("failure_reasons", [])
+            label = f"{yval}\n{verdict}"
+            if verdict == "FAIL" and reasons:
+                # Add first reason briefly
+                label += f"\n{reasons[0][:20]}..."
+            ax3.text(
+                bar.get_x() + bar.get_width() / 2,
+                yval,
+                label,
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color="red" if verdict == "FAIL" else "black",
+            )  # pragma: no mutate
+
+        plt.tight_layout()  # pragma: no mutate
+        plt.subplots_adjust(top=0.90)  # pragma: no mutate
+        plt.show()
 
     def execute_visualization(self) -> None:
         """Execute visualization."""

@@ -13,7 +13,7 @@ def main() -> None:
     """Execute main loop."""
     app_manager = application_manager.ApplicationManager(PORT_NAME, BAUDRATE, TIMEOUT)
 
-    os.system("clear")  # noqa: S605, S607
+    os.system("clear")  # noqa: S605, S607  # Intentional terminal clearing
     app_manager.initialize()
     app_manager.run()
 

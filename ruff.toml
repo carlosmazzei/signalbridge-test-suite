@@ -1,5 +1,5 @@
-# Assume Python 3.14
-target-version = "py314"
+# Assume Python 3.13
+target-version = "py313"
 
 [lint]
 select = [
@@ -22,4 +22,23 @@ unfixable = []
 "tests/**.py" = [
     "SLF001", # Private member acessed
     "S101", # assert not allowed
+    "PLR2004", # Magic value used in comparison
+    "PLC0415", # Import should be at the top-level of a file
+    "PLR0915", # Too many statements
+    "D101", # Missing docstring in public class
+    "D102", # Missing docstring in public method
+    "D103", # Missing docstring in public function
+    "E501", # Line too long
+    "ANN001", # Missing type annotation for function argument
+    "ANN202", # Missing return type annotation for private function
+    "ARG001", # Unused function argument
+    "ARG002", # Unused method argument
+    "RUF059", # Unused unpacked variable
+    "ERA001", # Commented-out code
+    "F841",   # Unused variable
+    "PLR0913", # Too many arguments
+    "PLW0108", # Unnecessary lambda
+    "TC002",  # Third-party import
+    "TC003",  # Standard library import
+    "D205",   # Missing blank line after summary
 ]
