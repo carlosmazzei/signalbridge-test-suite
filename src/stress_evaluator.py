@@ -136,11 +136,23 @@ def evaluate_verdict(
     is_warn = False
 
     # --- Drop ratio check ---
-    drop_ratio = (
-        (messages_sent - messages_received) / messages_sent
-        if messages_sent > 0
-        else 0.0
-    )
+    dropped = max(0, messages_sent - messages_received)
+
+    if cfg.command_profile == "noise_and_recovery":
+        # Noise corrupts the next valid message, causing a parsing error.
+        # This inevitably drops the message, but it shouldn't fail the test
+        # if the drop is accounted for by specific error counters.
+        explained_drops = (
+            status_delta.get("cobs_decode_error", 0)
+            + status_delta.get("msg_malformed_error", 0)
+            + status_delta.get("checksum_error", 0)
+            + status_delta.get("receive_buffer_overflow_error", 0)
+            + status_delta.get("buffer_overflow_error", 0)
+        )
+        unexplained_drops = max(0, dropped - explained_drops)
+        drop_ratio = unexplained_drops / messages_sent if messages_sent > 0 else 0.0
+    else:
+        drop_ratio = dropped / messages_sent if messages_sent > 0 else 0.0
     if drop_ratio > thresholds.max_echo_drop_ratio:
         limit = thresholds.max_echo_drop_ratio
         reasons.append(f"drop_ratio={drop_ratio:.4f} exceeds limit={limit:.4f}")

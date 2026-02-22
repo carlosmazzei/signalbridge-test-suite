@@ -127,6 +127,34 @@ class TestDropRatioFail:
         assert verdict == "FAIL"
 
 
+class TestNoiseAndRecoveryDrops:
+    def test_unexplained_drops_fail(self) -> None:
+        cfg = _cfg(max_drop=0.0)
+        cfg.command_profile = "noise_and_recovery"
+        verdict, reasons = evaluate_verdict(cfg, 10, 8, [], {"msg_malformed_error": 1})
+        assert verdict == "FAIL"
+        assert any("drop_ratio" in r for r in reasons)
+
+    def test_explained_drops_pass(self) -> None:
+        cfg = _cfg(max_drop=0.0)
+        cfg.command_profile = "noise_and_recovery"
+        verdict, _ = evaluate_verdict(
+            cfg,
+            10,
+            8,
+            [],
+            {"msg_malformed_error": 1, "receive_buffer_overflow_error": 1},
+        )
+        assert verdict == "PASS"
+
+    def test_normal_profile_ignores_error_counters_for_drops(self) -> None:
+        cfg = _cfg(max_drop=0.0)
+        cfg.command_profile = "echo_only"
+        verdict, reasons = evaluate_verdict(cfg, 10, 8, [], {"msg_malformed_error": 2})
+        assert verdict == "FAIL"
+        assert any("drop_ratio" in r for r in reasons)
+
+
 class TestErrorCounterFail:
     def test_single_counter_exceeds_budget(self) -> None:
         verdict, reasons = evaluate_verdict(
