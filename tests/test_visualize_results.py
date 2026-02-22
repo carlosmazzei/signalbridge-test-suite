@@ -689,6 +689,7 @@ def test_display_page_shows_correct_page_number(
     visualize_results._display_page(page_files, 0, 10, 5)
     captured = capsys.readouterr()
     assert "(Page 1 of 2)" in captured.out
+    assert "p - Previous page" not in captured.out
 
 
 def test_handle_choice_next_page(visualize_results: VisualizeResults) -> None:

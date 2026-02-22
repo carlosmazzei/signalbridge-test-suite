@@ -212,9 +212,7 @@ class VisualizeResults:
         statistics = status_delta.get("statistics")
         if not isinstance(statistics, dict):
             return 0
-        return int(
-            sum(int(statistics.get(key, 0)) for key in STATUS_ERROR_KEYS),
-        )
+        return int(sum(int(statistics.get(key, 0)) for key in STATUS_ERROR_KEYS))
 
     def plot_boxplot(
         self,
@@ -245,10 +243,19 @@ class VisualizeResults:
                 "• w.time: Waiting time between messages (ms)  "
                 "• baud: UART baud rate  "
                 "• bitrate: Effective data throughput (bits/s)\n"
+                "• t: Test name identifier  "
+                "• w.time: Waiting time between messages (ms)  "
+                "• baud: UART baud rate  "
+                "• bitrate: Effective data throughput (bits/s)\n"
                 "• Avg/Min/Max: Average, minimum, and maximum "
+                "roundtrip latency (ms)  "
                 "roundtrip latency (ms)  "
                 "• P95: 95th percentile latency - 95% of messages "
                 "responded faster\n"
+                "• ErrΔ / Status Δ Errors: Delta in controller error "
+                "counters (COBS, checksum, queue errors)\n"
+                "• Backlog End: Outstanding messages not yet "
+                "acknowledged at end of test  "
                 "• ErrΔ / Status Δ Errors: Delta in controller error "
                 "counters (COBS, checksum, queue errors)\n"
                 "• Backlog End: Outstanding messages not yet "
@@ -393,9 +400,15 @@ class VisualizeResults:
                 "• w.time: Waiting time between messages (ms)  "
                 "• baud: UART baud rate  "
                 "• bitrate: Effective data throughput (bits/s)\n"
+                "• t: Test name identifier  "
+                "• w.time: Waiting time between messages (ms)  "
+                "• baud: UART baud rate  "
+                "• bitrate: Effective data throughput (bits/s)\n"
                 "• Latency: Roundtrip time from message send to "
                 "response receipt (ms)  "
+                "response receipt (ms)  "
                 "• P95: 95th percentile - the latency threshold below "
+                "which 95% of messages fall"
                 "which 95% of messages fall"
             )
 
@@ -488,10 +501,15 @@ class VisualizeResults:
                 "• w.time: Waiting time between messages (ms)  "
                 "• baud: UART baud rate  "
                 "• bitrate: Effective data throughput (bits/s)\n"
+                "• t: Test name identifier  "
+                "• w.time: Waiting time between messages (ms)  "
+                "• baud: UART baud rate  "
+                "• bitrate: Effective data throughput (bits/s)\n"
                 "• Status Error Δ: Change in controller error counters "
                 "(queue errors, COBS decode errors, checksum errors, "
                 "buffer overflows, etc.)\n"
                 "• Backlog End: Number of outstanding unacknowledged "
+                "messages at end of test series  "
                 "messages at end of test series  "
                 "• Backlog Max: Peak number of outstanding messages "
                 "during test series\n"
@@ -791,7 +809,6 @@ class VisualizeResults:
         print("3. Controller health")
         print("4. Error counter details")
         choice = input("Enter choice (1, 2, 3 or 4): ")
-
         if choice == "1":
             self.plot_boxplot(labels, test_data, stats_data, samples, jitter=jitter)
         elif choice == "2":
