@@ -5,7 +5,9 @@ import logging
 import time
 from dataclasses import dataclass
 
-from tabulate import tabulate
+from rich import box
+from rich.panel import Panel
+from rich.table import Table
 
 from base_test import (
     STATISTICS_DISPLAY_NAMES,
@@ -16,11 +18,18 @@ from base_test import (
     TASK_ITEMS,
 )
 from serial_interface import SerialCommand, SerialInterface
+from ui_console import console
 
 logger = logging.getLogger(__name__)
 
 # Reverse lookup: name -> index for TASK_ITEMS
 _TASK_INDEX_BY_NAME = {name: idx for idx, name in TASK_ITEMS.items()}
+
+# Statistics keys that represent error counters (value > 0 is bad)
+_ERROR_STAT_NAMES = frozenset(STATISTICS_DISPLAY_NAMES) - {
+    "bytes_sent",
+    "bytes_received",
+}
 
 
 @dataclass
@@ -147,54 +156,69 @@ class StatusMode:
 
         self.logger.info("Status request complete")
 
+    @staticmethod
+    def _fmt_timestamp(ts: float) -> str:
+        """Format a Unix timestamp as a UTC datetime string, or 'N/A' if zero."""
+        if ts == 0:
+            return "N/A"
+        return datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
     def _display_statistics_status(self) -> None:
-        """Display statistics status."""
-        print("Statistics Status:")
-        statistics_data = []
-        for index in self.error_items:
-            item = self.error_items[index]
-            last_updated = "N/A"
-            if item.last_updated != 0:
-                last_updated = datetime.datetime.fromtimestamp(
-                    item.last_updated,
-                    tz=datetime.UTC,
-                ).strftime("%Y-%m-%d %H:%M:%S")
-            statistics_data.append([item.message, f"{item.value:,}", last_updated])
+        """Display statistics status with Rich tables."""
+        # --- Error / counter table ---
+        stats_table = Table(
+            title="Statistics Counters",
+            box=box.SIMPLE_HEAD,
+            show_lines=False,
+        )
+        stats_table.add_column("Counter", style="bold")
+        stats_table.add_column("Value", justify="right")
+        stats_table.add_column("Last Updated", style="dim")
 
-        print("Statistics Counters:")
-        print(
-            tabulate(
-                statistics_data,
-                headers=["Counter", "Value", "Last Updated"],
-                tablefmt="simple_grid",
+        for idx, item in self.error_items.items():
+            stat_name = STATISTICS_ITEMS[idx]
+            is_error_counter = stat_name in _ERROR_STAT_NAMES
+            value_str = f"{item.value:,}"
+            if is_error_counter and item.value > 0:
+                value_str = f"[red]{value_str}[/red]"
+            elif is_error_counter:
+                value_str = f"[green]{value_str}[/green]"
+            stats_table.add_row(
+                item.message, value_str, self._fmt_timestamp(item.last_updated)
             )
+
+        console.print(stats_table)
+
+        # --- Commands sent table ---
+        sent_table = Table(
+            title="Commands Sent",
+            box=box.SIMPLE_HEAD,
+            show_lines=False,
+        )
+        sent_table.add_column("Command", style="bold")
+        sent_table.add_column("Count", justify="right")
+        for k, v in self.ser.statistics.commands_sent.items():
+            sent_table.add_row(SerialCommand(k).name, f"{v:,}")
+        console.print(sent_table)
+        console.print(
+            f"  Total bytes sent: [cyan]{self.ser.statistics.bytes_sent:,}[/cyan]"
         )
 
-        print("\nCommands Sent Stastitics:")
-        print(
-            tabulate(
-                [
-                    [SerialCommand(k).name, f"{v:,}"]
-                    for k, v in self.ser.statistics.commands_sent.items()
-                ],
-                headers=["Command", "Count"],
-                tablefmt="simple_grid",
-            )
+        # --- Commands received table ---
+        recv_table = Table(
+            title="Commands Received",
+            box=box.SIMPLE_HEAD,
+            show_lines=False,
         )
-        print(f"Total bytes sent: {self.ser.statistics.bytes_sent:,.0f}")
-
-        print("\nCommands Received Stastitics:")
-        print(
-            tabulate(
-                [
-                    [SerialCommand(k).name, f"{v:,}"]
-                    for k, v in self.ser.statistics.commands_received.items()
-                ],
-                headers=["Command", "Count"],
-                tablefmt="simple_grid",
-            )
-        )
-        print(f"Total bytes received: {self.ser.statistics.bytes_received:,.0f}")
+        recv_table.add_column("Command", style="bold")
+        recv_table.add_column("Count", justify="right")
+        for k, v in self.ser.statistics.commands_received.items():
+            recv_table.add_row(SerialCommand(k).name, f"{v:,}")
+        console.print(recv_table)
+        received = self.ser.statistics.bytes_received
+        console.print(f"  Total bytes received: [cyan]{received:,}[/cyan]")
 
     def format_time_from_microseconds(self, microseconds: int) -> str:
         """Format time from microseconds."""
@@ -204,41 +228,29 @@ class StatusMode:
         return f"{int(minutes):02}:{int(seconds):02}:{int(ms):03}"
 
     def _display_task_status(self) -> None:
-        """Display task status."""
-        print("\nTask Status:")
-        task_data = []
-        for index in self.task_items:
-            item = self.task_items[index]
-            last_updated = "N/A"
-            if item.last_updated != 0:
-                last_updated = datetime.datetime.fromtimestamp(
-                    item.last_updated,
-                    tz=datetime.UTC,
-                ).strftime("%Y-%m-%d %H:%M:%S")
+        """Display task status with a Rich table."""
+        task_table = Table(
+            title="Task Status",
+            box=box.SIMPLE_HEAD,
+            show_lines=False,
+        )
+        task_table.add_column("Task", style="bold")
+        task_table.add_column("Abs Time (mm:ss:ms)", justify="right")
+        task_table.add_column("% Time", justify="right")
+        task_table.add_column("High Watermark", justify="right")
+        task_table.add_column("Last Updated", style="dim")
+
+        for item in self.task_items.values():
             formatted_time = self.format_time_from_microseconds(item.absoulute_time)
-            task_data.append(
-                [
-                    item.name,
-                    formatted_time,
-                    f"{item.percent_time}%",
-                    item.high_watermark,
-                    last_updated,
-                ]
+            task_table.add_row(
+                item.name,
+                formatted_time,
+                f"{item.percent_time}%",
+                str(item.high_watermark),
+                self._fmt_timestamp(item.last_updated),
             )
 
-        print(
-            tabulate(
-                task_data,
-                headers=[
-                    "Task",
-                    "Absolute Time (mm:ss:ms)",
-                    "% Time",
-                    "High Watermark",
-                    "Last Updated",
-                ],
-                tablefmt="simple_grid",
-            )
-        )
+        console.print(task_table)
 
         cdc_idx = _TASK_INDEX_BY_NAME["cdc_task"]
         uart_idx = _TASK_INDEX_BY_NAME["uart_event_task"]
@@ -246,7 +258,6 @@ class StatusMode:
             self.task_items[cdc_idx].absoulute_time
             + self.task_items[uart_idx].absoulute_time
         )
-        print(f"\nCore 0 total time: {core0_total_time:,.3f}")
 
         idle_idx = _TASK_INDEX_BY_NAME["idle_task"]
         encoder_idx = _TASK_INDEX_BY_NAME["encoder_read_task"]
@@ -262,7 +273,13 @@ class StatusMode:
             + self.task_items[process_idx].absoulute_time
             + self.task_items[decode_idx].absoulute_time
         )
-        print(f"Core 1 total time: {core1_total_time:,.3f}")
+
+        summary = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+        summary.add_column("label", style="dim")
+        summary.add_column("value", justify="right", style="cyan")
+        summary.add_row("Core 0 total time", f"{core0_total_time:,.3f}")
+        summary.add_row("Core 1 total time", f"{core1_total_time:,.3f}")
+        console.print(summary)
 
     def _handle_user_choice(self, choice: str) -> bool:
         """Handle user choice and return whether to continue."""
@@ -275,7 +292,7 @@ class StatusMode:
         elif choice == "4":
             return False
         else:
-            print("Invalid choice, please try again.")
+            console.print("[yellow]Invalid choice, please try again.[/yellow]")
         return True
 
     def execute_test(self) -> None:
@@ -284,13 +301,16 @@ class StatusMode:
             self._display_statistics_status()
             self._display_task_status()
 
-            print("\nSelect an option:")
-            print("1. Request statistics status")
-            print("2. Request task status")
-            print("3. Show status")
-            print("4. Exit")
+            options = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+            options.add_column("key", style="bold cyan", width=4)
+            options.add_column("action")
+            options.add_row("[1]", "Request statistics status")
+            options.add_row("[2]", "Request task status")
+            options.add_row("[3]", "Refresh display")
+            options.add_row("[4]", "Exit")
+            console.print(Panel(options, title="Status Options", title_align="left"))
 
-            choice = input("Enter choice (1, 2, 3 or 4): ")
+            choice = console.input("[bold]Enter choice:[/bold] ")
 
             if not self._handle_user_choice(choice):
                 return

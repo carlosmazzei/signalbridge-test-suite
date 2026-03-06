@@ -19,6 +19,7 @@ from base_test import (
 )
 from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
+from ui_console import console
 
 if TYPE_CHECKING:
     from serial_interface import SerialInterface
@@ -134,7 +135,9 @@ class BaudRateTest(BaseTest):
 
     def _show_baud_options(self) -> tuple[list[int], int, int, int]:
         """Show baud sweep options and return selected values."""
-        print(f"Default baud rates: {DEFAULT_BAUD_RATES}")
+        console.print(
+            f"[dim]Default baud rates:[/dim] [cyan]{DEFAULT_BAUD_RATES}[/cyan]"
+        )
         use_default = self._get_user_input(
             "(1/4) Use default baud rates? (True/False)",
             default=True,

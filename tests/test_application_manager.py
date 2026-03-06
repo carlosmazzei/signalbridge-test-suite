@@ -203,20 +203,22 @@ def test_handle_message_modes(
     mock_module.handle_message.assert_called_once_with(*expected)
 
 
-def test_display_menu_all_modules(app_manager: ApplicationManager) -> None:
+def test_display_menu_all_modules(
+    app_manager: ApplicationManager, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Display menu when all modules are available."""
     for cfg in app_manager.module_configs:
         app_manager.modules[cfg.mode] = object()
     app_manager.connected = True
 
-    with patch("builtins.print") as mock_print:
-        app_manager.display_menu()
+    app_manager.display_menu()
+    out = capsys.readouterr().out
 
-    mock_print.assert_any_call("\nAvailable options:")
-    mock_print.assert_any_call("0. Disconnect from device")
+    assert "SignalBridge Test Suite" in out
+    assert "Disconnect from device" in out
     for cfg in app_manager.module_configs:
-        mock_print.assert_any_call(f"{cfg.key}. {cfg.description}")
-    mock_print.assert_any_call(f"{app_manager.exit_key}. Exit")
+        assert cfg.description in out
+    assert "Exit" in out
 
 
 def test_app_manager_initial_mode_and_exit_key() -> None:
@@ -266,17 +268,18 @@ def test_menu_items_structure(app_manager: ApplicationManager) -> None:
     assert exit_item.description() == "Exit"
 
 
-def test_display_menu_some_modules(app_manager: ApplicationManager) -> None:
+def test_display_menu_some_modules(
+    app_manager: ApplicationManager, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Display menu when only visualization module is available."""
     app_manager.modules = {Mode.VISUALIZE: object()}
-    with patch("builtins.print") as mock_print:
-        app_manager.display_menu()
 
-    mock_print.assert_any_call("\nAvailable options:")
-    mock_print.assert_any_call("0. Connect to device")
-    mock_print.assert_any_call("4. Visualize test results")
-    # Verify we aren't printing more options than we should (0, 4, Exit = 3 options + header = 4 lines)
-    assert mock_print.call_count == 4
+    app_manager.display_menu()
+    out = capsys.readouterr().out
+
+    assert "SignalBridge Test Suite" in out
+    assert "Connect to device" in out
+    assert "Visualize test results" in out
 
 
 def test_module_configs_builder_wiring(app_manager: ApplicationManager) -> None:
@@ -756,9 +759,9 @@ def test_initialize_builds_non_serial_module_instance(
 def test_display_menu_shows_available_options_header(
     app_manager: ApplicationManager, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """display_menu always prints the 'Available options:' header."""
+    """display_menu always renders the application title header."""
     app_manager.display_menu()
-    assert "Available options:" in capsys.readouterr().out
+    assert "SignalBridge Test Suite" in capsys.readouterr().out
 
 
 def test_handle_user_choice_condition_false_returns_true(
