@@ -7,15 +7,28 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from rich import box
+from rich.panel import Panel
+from rich.table import Table
+
 from const import TEST_RESULTS_FOLDER
+from ui_console import console
 
 if TYPE_CHECKING:
     from stress_evaluator import StressRunResult
 
 logger = logging.getLogger(__name__)
 
-# Emoji indicators for quick scanning
-_VERDICT_ICON = {"PASS": "✅ PASS", "FAIL": "❌ FAIL", "WARN": "⚠️  WARN"}
+_VERDICT_STYLE: dict[str, str] = {
+    "PASS": "bold green",
+    "FAIL": "bold red",
+    "WARN": "bold yellow",
+}
+_VERDICT_ICON: dict[str, str] = {
+    "PASS": "✅ PASS",
+    "FAIL": "❌ FAIL",
+    "WARN": "⚠️  WARN",
+}
 
 
 def write_json_report(
@@ -36,37 +49,44 @@ def write_json_report(
 
 def print_summary(result: StressRunResult) -> None:
     """Print a compact summary table to stdout."""
-    col_w = [24, 6, 6, 8, 10, 14]
-    headers = ["Scenario", "Sent", "Rcvd", "Drop %", "P95 ms", "Verdict"]
-    sep = "─" * (sum(col_w) + len(col_w) * 3 + 1)
-
-    print()
-    print(f"  Stress Run  {result.run_id}")
-    print(f"  Port: {result.port}  Baudrate: {result.baudrate}")
-    print(f"  Started: {result.started_at}   Ended: {result.ended_at}")
-    print(sep)
-    header_line = " │ ".join(h.ljust(w) for h, w in zip(headers, col_w, strict=False))
-    print(f" {header_line}")
-    print(sep)
+    table = Table(
+        title=f"Stress Run  {result.run_id}",
+        box=box.SIMPLE_HEAD,
+        show_lines=False,
+    )
+    table.add_column("Scenario", style="bold", min_width=24)
+    table.add_column("Sent", justify="right")
+    table.add_column("Rcvd", justify="right")
+    table.add_column("Drop %", justify="right")
+    table.add_column("P95 ms", justify="right")
+    table.add_column("Verdict", justify="center")
 
     for s in result.scenarios:
         drop_pct = f"{s.drop_ratio * 100:.2f}%"
         p95 = f"{s.p95_ms:.1f}"
-        verdict_str = _VERDICT_ICON.get(s.verdict, s.verdict)
-        row = [
+        style = _VERDICT_STYLE.get(s.verdict, "")
+        verdict_str = f"[{style}]{_VERDICT_ICON.get(s.verdict, s.verdict)}[/]"
+        table.add_row(
             s.name,
             str(s.messages_sent),
             str(s.messages_received),
             drop_pct,
             p95,
             verdict_str,
-        ]
-        row_line = " │ ".join(v.ljust(w) for v, w in zip(row, col_w, strict=False))
-        print(f" {row_line}")
+        )
         for reason in s.failure_reasons:
-            print(f"   └─ {reason}")
+            table.add_row(f"  [dim]└─ {reason}[/dim]", "", "", "", "", "")
 
-    print(sep)
-    overall = _VERDICT_ICON.get(result.overall_verdict, result.overall_verdict)
-    print(f"  Overall: {overall}")
-    print()
+    overall_style = _VERDICT_STYLE.get(result.overall_verdict, "")
+    overall_icon = _VERDICT_ICON.get(result.overall_verdict, result.overall_verdict)
+
+    meta = (
+        f"Port: [cyan]{result.port}[/cyan]  "
+        f"Baudrate: [cyan]{result.baudrate}[/cyan]\n"
+        f"Started: [dim]{result.started_at}[/dim]   "
+        f"Ended: [dim]{result.ended_at}[/dim]\n\n"
+        f"Overall: [{overall_style}]{overall_icon}[/]"
+    )
+
+    console.print(Panel(meta, title="Run Info", title_align="left", padding=(0, 1)))
+    console.print(table)

@@ -7,7 +7,11 @@ import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
+
+from rich import box
+from rich.panel import Panel
+from rich.table import Table
 
 from baud_rate_test import BaudRateTest
 from command_mode import CommandMode
@@ -18,6 +22,7 @@ from serial_interface import SerialInterface
 from status_mode import StatusMode
 from stress_config import default_stress_config
 from stress_test import StressTest
+from ui_console import console
 from visualize_results import VisualizeResults
 
 if TYPE_CHECKING:
@@ -274,12 +279,72 @@ class ApplicationManager:
             self.monitor_thread.join()
         self.disconnect_serial()
 
+    # Menu groups: (group label, list of mode keys that belong to it).
+    # Key "0" (connection toggle) and the exit key are handled separately.
+    _MENU_GROUPS: ClassVar[list[tuple[str, list[str]]]] = [
+        ("Tests", ["1", "3", "6", "7"]),
+        ("Tools & Analysis", ["2", "5", "4"]),
+    ]
+
+    def _build_menu_table(self) -> Table:
+        """Build the Rich Table that represents the grouped menu."""
+        status_color = "green" if self.connected else "red"
+        status_dot = "●" if self.connected else "○"
+        status_label = "Connected" if self.connected else "Disconnected"
+        port = getattr(self.serial_interface, "port", "?")
+        baudrate = getattr(self.serial_interface, "baudrate", 0)
+        port_info = f"[dim]{port}  {baudrate:,} baud[/dim]"
+        status_line = f"[{status_color}]{status_dot} {status_label}[/]  {port_info}"
+
+        table = Table(
+            box=box.SIMPLE,
+            show_header=False,
+            padding=(0, 1),
+            show_edge=False,
+            title=f"[bold cyan]SignalBridge Test Suite[/bold cyan]  —  {status_line}",
+            title_justify="left",
+        )
+        table.add_column("key", style="bold cyan", no_wrap=True, width=5)
+        table.add_column("description")
+
+        items_by_key = {item.key: item for item in self.menu_items}
+
+        # Connection toggle
+        conn_item = items_by_key["0"]
+        table.add_row("", "")
+        table.add_row("", "[bold]Connection[/bold]")
+        table.add_row(f"[{status_color}][0][/]", conn_item.description())
+
+        # Grouped sections
+        for group_label, keys in self._MENU_GROUPS:
+            table.add_row("", "")
+            table.add_row("", f"[bold]{group_label}[/bold]")
+            for k in keys:
+                item = items_by_key.get(k)
+                if item is None:
+                    continue
+                available = item.condition()
+                if available:
+                    table.add_row(f"[cyan][{k}][/cyan]", item.description())
+                else:
+                    table.add_row(
+                        f"[dim][{k}][/dim]",
+                        f"[dim]{item.description()}  (requires connection)[/dim]",
+                    )
+
+        # Exit
+        exit_item = items_by_key[self.exit_key]
+        table.add_row("", "")
+        table.add_row(
+            f"[dim][{self.exit_key}][/dim]",
+            f"[dim]{exit_item.description()}[/dim]",
+        )
+
+        return table
+
     def display_menu(self) -> None:
-        """Display the menu of available options."""
-        print("\nAvailable options:")
-        for item in self.menu_items:
-            if item.condition():
-                print(f"{item.key}. {item.description()}")
+        """Display the grouped menu of available options."""
+        console.print(Panel(self._build_menu_table(), padding=(0, 1)))
 
     def _handle_user_choice(self, choice: str) -> bool:
         """Handle user choice and return whether to continue the loop."""

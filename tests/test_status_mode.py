@@ -159,20 +159,21 @@ def test_display_statistics_status_outputs_tables(
     sm._display_statistics_status()
     out = capsys.readouterr().out
 
-    assert "Statistics Status:" in out
-    assert "Statistics Counters:" in out
+    assert "Statistics Counters" in out
     # Ensure counter name and human-formatted value present
     assert sm.error_items[first_idx].message in out
     assert "9,001" in out
     # Commands stats and totals
-    assert "Commands Sent Stastitics:" in out
+    assert "Commands Sent" in out
     assert "ECHO_COMMAND" in out
     assert "2" in out
-    assert "Commands Received Stastitics:" in out
+    assert "Commands Received" in out
     assert "KEY_COMMAND" in out
     assert "3" in out
-    assert "Total bytes sent: 123" in out
-    assert "Total bytes received: 456" in out
+    assert "Total bytes sent:" in out
+    assert "123" in out
+    assert "Total bytes received:" in out
+    assert "456" in out
 
 
 def test_format_time_from_microseconds() -> None:
@@ -202,15 +203,15 @@ def test_display_task_status_outputs_table(capsys: pytest.CaptureFixture[str]) -
     out = capsys.readouterr().out
 
     # Table headings
-    assert "Task Status:" in out
-    assert "Absolute Time (mm:ss:ms)" in out
+    assert "Task Status" in out
+    assert "Abs Time" in out
     # A formatted task row (CDC Task)
     assert "CDC Task" in out
     assert "% Time" in out
     assert "99" in out
     # Totals
-    assert "Core 0 total time:" in out
-    assert "Core 1 total time:" in out
+    assert "Core 0 total time" in out
+    assert "Core 1 total time" in out
 
 
 def test_handle_user_choice_dispatch() -> None:
