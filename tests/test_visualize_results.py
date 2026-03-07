@@ -663,7 +663,9 @@ def _render_display_page(
     buf = StringIO()
     test_console = RichConsole(file=buf, no_color=True, width=200, force_terminal=False)
     with patch("visualize_results.console", test_console):
-        visualize_results._display_page(page_files, current_page, total_files, page_size)
+        visualize_results._display_page(
+            page_files, current_page, total_files, page_size
+        )
     return buf.getvalue()
 
 
@@ -856,7 +858,9 @@ def test_status_error_delta_total_non_dict_statistics(
     assert result == 0
 
 
-def test_display_page_shows_previous_option(visualize_results: VisualizeResults) -> None:
+def test_display_page_shows_previous_option(
+    visualize_results: VisualizeResults,
+) -> None:
     """_display_page shows 'Previous page' when current_page > 0."""
     page_files = [Path(f"test_{i}.json") for i in range(5)]
     output = _render_display_page(visualize_results, page_files, 1, 20, 5)
