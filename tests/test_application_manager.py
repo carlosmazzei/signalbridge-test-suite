@@ -255,12 +255,12 @@ def test_menu_items_structure(app_manager: ApplicationManager) -> None:
     }
 
     assert item_map["1"] == "Run latency test"
-    assert item_map["2"] == "Send command"
-    assert item_map["3"] == "Regression test"
-    assert item_map["4"] == "Visualize test results"
-    assert item_map["5"] == "Status mode"
-    assert item_map["6"] == "Baud rate sweep test"
-    assert item_map["7"] == "Stress test (automated scenarios)"
+    assert item_map["2"] == "Regression test"
+    assert item_map["3"] == "Baud rate sweep test"
+    assert item_map["4"] == "Stress test (automated scenarios)"
+    assert item_map["5"] == "Send command"
+    assert item_map["6"] == "Status mode"
+    assert item_map["7"] == "Visualize test results"
 
     # 3. Exit
     exit_item = items[-1]
@@ -336,41 +336,41 @@ def test_module_configs_complete_definition(app_manager: ApplicationManager) -> 
     assert cfg.description == "Run latency test"
     assert cfg.requires_serial is True
 
-    # 2. Command
-    cfg = configs[Mode.COMMAND]
-    assert cfg.key == "2"
-    assert cfg.description == "Send command"
-    assert cfg.requires_serial is True
-
-    # 3. Regression
+    # 2. Regression
     cfg = configs[Mode.REGRESSION]
-    assert cfg.key == "3"
+    assert cfg.key == "2"
     assert cfg.description == "Regression test"
     assert cfg.requires_serial is True
 
-    # 4. Visualize
-    cfg = configs[Mode.VISUALIZE]
-    assert cfg.key == "4"
-    assert cfg.description == "Visualize test results"
-    assert cfg.requires_serial is False
-
-    # 5. Status
-    cfg = configs[Mode.STATUS]
-    assert cfg.key == "5"
-    assert cfg.description == "Status mode"
-    assert cfg.requires_serial is True
-
-    # 6. Baud Sweep
+    # 3. Baud Sweep
     cfg = configs[Mode.BAUD_SWEEP]
-    assert cfg.key == "6"
+    assert cfg.key == "3"
     assert cfg.description == "Baud rate sweep test"
     assert cfg.requires_serial is True
 
-    # 7. Stress test
+    # 4. Stress test
     cfg = configs[Mode.STRESS]
-    assert cfg.key == "7"
+    assert cfg.key == "4"
     assert cfg.description == "Stress test (automated scenarios)"
     assert cfg.requires_serial is True
+
+    # 5. Command
+    cfg = configs[Mode.COMMAND]
+    assert cfg.key == "5"
+    assert cfg.description == "Send command"
+    assert cfg.requires_serial is True
+
+    # 6. Status
+    cfg = configs[Mode.STATUS]
+    assert cfg.key == "6"
+    assert cfg.description == "Status mode"
+    assert cfg.requires_serial is True
+
+    # 7. Visualize
+    cfg = configs[Mode.VISUALIZE]
+    assert cfg.key == "7"
+    assert cfg.description == "Visualize test results"
+    assert cfg.requires_serial is False
 
     # Verify no unexpected modes
     assert len(configs) == 7
