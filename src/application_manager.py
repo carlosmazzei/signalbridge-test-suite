@@ -335,10 +335,7 @@ class ApplicationManager:
         # Exit
         exit_item = items_by_key[self.exit_key]
         table.add_row("", "")
-        table.add_row(
-            f"[dim][{self.exit_key}][/dim]",
-            f"[dim]{exit_item.description()}[/dim]",
-        )
+        table.add_row(f"[cyan][{self.exit_key}][/cyan]", exit_item.description())
 
         return table
 
