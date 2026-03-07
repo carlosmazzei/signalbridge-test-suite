@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import logging
 import time
 from types import SimpleNamespace
@@ -239,3 +240,123 @@ def test_execute_test_exits_on_choice_four() -> None:
         patch("builtins.input", return_value="4"),
     ):
         sm.execute_test()
+
+
+# ---------------------------------------------------------------------------
+# Additional mutation-testing coverage
+# ---------------------------------------------------------------------------
+
+
+class TestFmtTimestamp:
+    """Tests for the _fmt_timestamp static helper."""
+
+    def test_zero_returns_na(self) -> None:
+        """Passing 0 should return 'N/A'."""
+        assert StatusMode._fmt_timestamp(0) == "N/A"
+
+    def test_nonzero_returns_formatted_string(self) -> None:
+        """A known nonzero timestamp produces the expected datetime string."""
+        ts = 1700000000
+        expected = datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        assert StatusMode._fmt_timestamp(ts) == expected
+
+    def test_negative_zero_returns_na(self) -> None:
+        """Passing 0.0 (float zero) should also return 'N/A'."""
+        assert StatusMode._fmt_timestamp(0.0) == "N/A"
+
+
+def test_handle_message_unknown_index() -> None:
+    """Calling handle_message with an unknown status_index causes no crash or change."""
+    sm = make_status_mode()
+
+    # Snapshot originals
+    orig_error_values = {k: v.value for k, v in sm.error_items.items()}
+    orig_task_abs = {k: v.absoulute_time for k, v in sm.task_items.items()}
+
+    unknown_idx = 0xFF  # not in error_items or task_items
+
+    # --- statistics branch with unknown index ---
+    stat_payload = bytes([0x00, 0x00, 0x00, unknown_idx]) + (100).to_bytes(4, "big")
+    sm.handle_message(SerialCommand.STATISTICS_STATUS_COMMAND.value, stat_payload)
+
+    assert {k: v.value for k, v in sm.error_items.items()} == orig_error_values
+
+    # --- task branch with unknown index ---
+    task_payload = (
+        bytes([0x00, 0x00, 0x00, unknown_idx])
+        + (200).to_bytes(4, "big")
+        + (10).to_bytes(4, "big")
+        + (5).to_bytes(4, "big")
+    )
+    sm.handle_message(SerialCommand.TASK_STATUS_COMMAND.value, task_payload)
+
+    assert {k: v.absoulute_time for k, v in sm.task_items.items()} == orig_task_abs
+
+
+def test_display_task_status_shows_computed_totals(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify Core 0 / Core 1 numeric totals appear in the rendered output."""
+    sm = make_status_mode()
+
+    # Assign known microsecond values to every task
+    sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].absoulute_time = 1_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["cdc_write_task"]].absoulute_time = 500
+    sm.task_items[_TASK_INDEX_BY_NAME["uart_event_task"]].absoulute_time = 2_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["idle_task"]].absoulute_time = 3_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["encoder_read_task"]].absoulute_time = 4_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["adc_read_task"]].absoulute_time = 5_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["keypad_task"]].absoulute_time = 6_000_000
+    sm.task_items[
+        _TASK_INDEX_BY_NAME["process_outbound_task"]
+    ].absoulute_time = 7_000_000
+    sm.task_items[
+        _TASK_INDEX_BY_NAME["decode_reception_task"]
+    ].absoulute_time = 8_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["led_status_task"]].absoulute_time = 100
+
+    sm._display_task_status()
+    out = capsys.readouterr().out
+
+    # Core 0 = cdc_task + uart_event_task = 1_000_000 + 2_000_000 = 3_000_000
+    # formatted as "3,000,000.000"
+    assert "3,000,000.000" in out
+
+    # Core 1 = idle + encoder + adc + keypad + process + decode
+    # = 3M + 4M + 5M + 6M + 7M + 8M = 33_000_000
+    # formatted as "33,000,000.000"
+    assert "33,000,000.000" in out
+
+
+def test_execute_test_statistics_choice() -> None:
+    """Choosing '1' then '4' should call _display_statistics_status and exit."""
+    sm = make_status_mode()
+    choices = iter(["1", "4"])
+    with (
+        patch.object(sm, "_display_statistics_status") as disp_stats,
+        patch.object(sm, "_display_task_status"),
+        patch.object(sm, "_update_statistics_status"),
+        patch("builtins.input", side_effect=lambda *_a, **_kw: next(choices)),
+    ):
+        sm.execute_test()
+
+    # _display_statistics_status is called at the top of each loop iteration
+    # Loop runs twice (choice "1" → continue, choice "4" → exit)
+    assert disp_stats.call_count == 2
+
+
+def test_update_statistics_status_sends_correct_header() -> None:
+    """Verify _update_statistics_status calls _status_update with STATISTICS_HEADER_BYTES."""
+    sm = make_status_mode()
+    with (
+        patch.object(sm, "_status_update") as upd,
+        patch("status_mode.time.sleep", lambda _x: None),
+    ):
+        sm._update_statistics_status()
+
+    # Every call must use STATISTICS_HEADER_BYTES as the first argument
+    for call in upd.call_args_list:
+        args, _kwargs = call
+        assert args[0] == STATISTICS_HEADER_BYTES

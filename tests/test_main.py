@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 import pytest
 
@@ -72,3 +72,18 @@ def test_main_calls_initialize_and_run(mock_app_manager: Mock) -> None:
     main()
     mock_app_manager.initialize.assert_called_once()
     mock_app_manager.run.assert_called_once()
+
+
+def test_main_calls_console_clear(mock_app_manager: Mock) -> None:
+    """Test that main() calls console.clear() once."""
+    with patch("main.console") as mock_console:
+        main()
+        mock_console.clear.assert_called_once()
+
+
+def test_main_calls_initialize_before_run(mock_app_manager: Mock) -> None:
+    """Test that main() calls initialize() before run()."""
+    main()
+    mock_app_manager.assert_has_calls(
+        [call.initialize(), call.run()],
+    )

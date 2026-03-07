@@ -27,9 +27,15 @@ MUTATED_MODULE_PATHS = (
     "src/checksum.py",
     "src/command_mode.py",
     "src/latency_test.py",
+    "src/logger_config.py",
+    "src/main.py",
     "src/regression_test.py",
     "src/serial_interface.py",
     "src/status_mode.py",
+    "src/stress_config.py",
+    "src/stress_evaluator.py",
+    "src/stress_reporter.py",
+    "src/stress_test.py",
     "src/visualize_results.py",
 )
 

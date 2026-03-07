@@ -195,7 +195,7 @@ class TestMixedCommandBurst:
         ):
             tester._run_mixed_command_burst(cfg.scenarios[0])
         # At random mix some status_updates are expected; just ensure callable was invoked
-        assert mock_su.call_count >= 0  # always true — validates no error is thrown
+        assert mock_su.call_count > 0
 
 
 # ---------------------------------------------------------------------------
@@ -424,3 +424,162 @@ class TestScenarioOrdering:
         ):
             result = tester.execute_test()
         assert isinstance(result, StressRunResult)
+
+
+# ---------------------------------------------------------------------------
+# TestStressTestInit
+# ---------------------------------------------------------------------------
+
+
+class TestStressTestInit:
+    """Tests for StressTest.__init__ defaults."""
+
+    def test_config_defaults_to_default_stress_config(self, mock_serial: Mock) -> None:
+        tester = StressTest(mock_serial, config=None)
+        expected = default_stress_config()
+        assert len(tester.config.scenarios) == len(expected.scenarios)
+        for actual, exp in zip(
+            tester.config.scenarios, expected.scenarios, strict=True
+        ):
+            assert actual.name == exp.name
+            assert actual.command_profile == exp.command_profile
+
+    def test_run_id_is_valid_uuid(self, mock_serial: Mock) -> None:
+        import uuid
+
+        tester = StressTest(mock_serial)
+        # No exception means valid UUID
+        parsed = uuid.UUID(tester._run_id)
+        assert str(parsed) == tester._run_id
+
+    def test_scenario_results_starts_empty(self, mock_serial: Mock) -> None:
+        tester = StressTest(mock_serial)
+        assert tester._scenario_results == []
+
+
+# ---------------------------------------------------------------------------
+# TestHandleMessageDelegation
+# ---------------------------------------------------------------------------
+
+
+class TestHandleMessageDelegation:
+    """Tests that handle_message delegates to BaseTest.handle_message."""
+
+    def test_super_handle_message_called(self, mock_serial: Mock) -> None:
+        from base_test import BaseTest
+
+        tester = _make_tester(mock_serial)
+        with patch.object(BaseTest, "handle_message") as mock_super:
+            tester.handle_message(0x01, b"\x00\x01\x02")
+        mock_super.assert_called_once_with(0x01, b"\x00\x01\x02")
+
+
+# ---------------------------------------------------------------------------
+# TestShowOptions
+# ---------------------------------------------------------------------------
+
+
+class TestShowOptions:
+    """Tests for _show_options user-selection logic."""
+
+    def test_choice_zero_returns_all_scenarios(self, mock_serial: Mock) -> None:
+        cfg = StressConfig(
+            scenarios=[
+                ScenarioConfig(name="s1", duration_s=1.0, command_profile="echo_only"),
+                ScenarioConfig(name="s2", duration_s=1.0, command_profile="mixed"),
+            ],
+        )
+        tester = _make_tester(mock_serial, cfg)
+        with patch.object(tester, "_get_user_input", return_value=0):
+            result = tester._show_options()
+        assert len(result) == 2
+        assert result[0].name == "s1"
+        assert result[1].name == "s2"
+
+    def test_valid_choice_returns_single_scenario(self, mock_serial: Mock) -> None:
+        cfg = StressConfig(
+            scenarios=[
+                ScenarioConfig(name="s1", duration_s=1.0, command_profile="echo_only"),
+                ScenarioConfig(name="s2", duration_s=1.0, command_profile="mixed"),
+            ],
+        )
+        tester = _make_tester(mock_serial, cfg)
+        with patch.object(tester, "_get_user_input", return_value=2):
+            result = tester._show_options()
+        assert len(result) == 1
+        assert result[0].name == "s2"
+
+    def test_invalid_choice_returns_all_scenarios(self, mock_serial: Mock) -> None:
+        cfg = StressConfig(
+            scenarios=[
+                ScenarioConfig(name="s1", duration_s=1.0, command_profile="echo_only"),
+                ScenarioConfig(name="s2", duration_s=1.0, command_profile="mixed"),
+            ],
+        )
+        tester = _make_tester(mock_serial, cfg)
+        with patch.object(tester, "_get_user_input", return_value=99):
+            result = tester._show_options()
+        assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# TestRunScenarioUnknown
+# ---------------------------------------------------------------------------
+
+
+class TestRunScenarioUnknown:
+    """Tests _run_scenario with an unknown command profile."""
+
+    def test_unknown_profile_returns_zero_messages_sent(
+        self, mock_serial: Mock
+    ) -> None:
+        cfg = StressConfig(
+            scenarios=[
+                ScenarioConfig(
+                    name="unknown_test",
+                    duration_s=1.0,
+                    command_profile="unknown_profile",
+                )
+            ],
+        )
+        tester = _make_tester(mock_serial, cfg)
+        result = tester._run_scenario(cfg.scenarios[0])
+        assert result.messages_sent == 0
+        assert result.command_profile == "unknown_profile"
+
+
+# ---------------------------------------------------------------------------
+# TestExecuteTestSerialNone
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteTestSerialNone:
+    """Tests execute_test when serial is None or not open."""
+
+    def test_returns_none_when_serial_is_none(self, mock_serial: Mock) -> None:
+        tester = _make_tester(mock_serial)
+        tester.ser = None
+        result = tester.execute_test()
+        assert result is None
+
+    def test_returns_none_when_serial_not_open(self, mock_serial: Mock) -> None:
+        mock_serial.is_open.return_value = False
+        tester = _make_tester(mock_serial)
+        result = tester.execute_test()
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# TestStatisticsItemsProperty
+# ---------------------------------------------------------------------------
+
+
+class TestStatisticsItemsProperty:
+    """Tests the STATISTICS_ITEMS property."""
+
+    def test_returns_expected_dict(self, mock_serial: Mock) -> None:
+        from base_test import STATISTICS_ITEMS
+
+        tester = _make_tester(mock_serial)
+        assert tester.STATISTICS_ITEMS == STATISTICS_ITEMS
+        assert isinstance(tester.STATISTICS_ITEMS, dict)

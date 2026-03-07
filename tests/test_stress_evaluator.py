@@ -12,6 +12,7 @@ from stress_config import ScenarioConfig, ScenarioThresholds
 from stress_evaluator import (
     ScenarioResult,
     StressRunResult,
+    _percentile,
     aggregate_verdict,
     compute_latency_stats,
     evaluate_verdict,
@@ -277,3 +278,123 @@ class TestResultSerialization:
         d = run.to_dict()
         for key in ("run_id", "port", "baudrate", "overall_verdict", "scenarios"):
             assert key in d
+
+    def test_scenario_result_to_dict_values(self) -> None:
+        r = ScenarioResult(
+            name="val_scenario",
+            run_id="run_42",
+            started_at="2024-01-01T00:00:00Z",
+            ended_at="2024-01-01T00:01:00Z",
+            command_profile="echo_only",
+            messages_sent=200,
+            messages_received=195,
+            drop_ratio=0.025,
+            latencies_ms=[5.0, 10.0],
+            p50_ms=7.5,
+            p95_ms=9.75,
+            p99_ms=9.95,
+            status_delta={"checksum_error": 3},
+            task_snapshot={"task1": {"pct": 80}},
+            verdict="FAIL",
+            failure_reasons=["too many drops"],
+            tags=["nightly"],
+        )
+        d = r.to_dict()
+        assert d["name"] == "val_scenario"
+        assert d["run_id"] == "run_42"
+        assert d["started_at"] == "2024-01-01T00:00:00Z"
+        assert d["ended_at"] == "2024-01-01T00:01:00Z"
+        assert d["command_profile"] == "echo_only"
+        assert d["messages_sent"] == 200
+        assert d["messages_received"] == 195
+        assert d["drop_ratio"] == pytest.approx(0.025)
+        assert d["latencies_ms"] == [5.0, 10.0]
+        assert d["p50_ms"] == pytest.approx(7.5)
+        assert d["p95_ms"] == pytest.approx(9.75)
+        assert d["p99_ms"] == pytest.approx(9.95)
+        assert d["status_delta"] == {"checksum_error": 3}
+        assert d["task_snapshot"] == {"task1": {"pct": 80}}
+        assert d["verdict"] == "FAIL"
+        assert d["failure_reasons"] == ["too many drops"]
+        assert d["tags"] == ["nightly"]
+
+    def test_stress_run_result_to_dict_values(self) -> None:
+        scenario = _result("WARN", ["high latency"])
+        run = StressRunResult(
+            run_id="run_99",
+            port="/dev/ttyUSB0",
+            baudrate=115200,
+            started_at="2024-06-01T12:00:00Z",
+            ended_at="2024-06-01T12:05:00Z",
+            scenarios=[scenario],
+            overall_verdict="WARN",
+        )
+        d = run.to_dict()
+        assert d["run_id"] == "run_99"
+        assert d["port"] == "/dev/ttyUSB0"
+        assert d["baudrate"] == 115200
+        assert d["started_at"] == "2024-06-01T12:00:00Z"
+        assert d["ended_at"] == "2024-06-01T12:05:00Z"
+        assert d["overall_verdict"] == "WARN"
+        assert len(d["scenarios"]) == 1
+        assert d["scenarios"][0]["verdict"] == "WARN"
+        assert d["scenarios"][0]["failure_reasons"] == ["high latency"]
+
+
+# ---------------------------------------------------------------------------
+# _percentile — tight tolerance & interpolation
+# ---------------------------------------------------------------------------
+
+
+class TestPercentilePrecision:
+    def test_percentile_interpolation_precision(self) -> None:
+        """Test _percentile directly with known values and tight tolerance."""
+        values = [float(v) for v in range(1, 101)]  # 1.0 .. 100.0
+        # For 100 elements: k = 99 * pct / 100
+        # p50: k = 49.5  → 50*0.5 + 51*0.5 = 50.5
+        assert _percentile(values, 50) == pytest.approx(50.5, abs=0.01)
+        # p95: k = 94.05 → 95*0.95 + 96*0.05 = 90.25 + 4.8 = 95.05
+        assert _percentile(values, 95) == pytest.approx(95.05, abs=0.01)
+        # p99: k = 98.01 → 99*0.99 + 100*0.01 = 98.01 + 1.0 = 99.01
+        assert _percentile(values, 99) == pytest.approx(99.01, abs=0.01)
+
+    def test_two_element_list(self) -> None:
+        """Exercise the interpolation formula where floor != ceil."""
+        values = [10.0, 20.0]
+        # p50: k = (2-1)*50/100 = 0.5  → lo=0, hi=1
+        #   10.0 * (1 - 0.5) + 20.0 * (0.5 - 0) = 5.0 + 10.0 = 15.0
+        assert _percentile(values, 50) == pytest.approx(15.0, abs=0.01)
+        # p95: k = 1*95/100 = 0.95 → lo=0, hi=1
+        #   10.0 * (1 - 0.95) + 20.0 * (0.95 - 0) = 0.5 + 19.0 = 19.5
+        assert _percentile(values, 95) == pytest.approx(19.5, abs=0.01)
+        # p99: k = 1*99/100 = 0.99 → lo=0, hi=1
+        #   10.0 * (1 - 0.99) + 20.0 * (0.99 - 0) = 0.1 + 19.8 = 19.9
+        assert _percentile(values, 99) == pytest.approx(19.9, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# compute_latency_stats — p99 known value
+# ---------------------------------------------------------------------------
+
+
+class TestComputeLatencyStatsP99:
+    def test_known_values_p99(self) -> None:
+        values = [float(v) for v in range(1, 101)]  # 1.0 .. 100.0
+        _, _, p99 = compute_latency_stats(values)
+        assert p99 == pytest.approx(99.01, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# evaluate_verdict — drop fail reason content
+# ---------------------------------------------------------------------------
+
+
+class TestDropFailReasonContent:
+    def test_drop_fail_reason_contains_ratio(self) -> None:
+        """Check the reason field contains the actual drop ratio value."""
+        verdict, reasons = evaluate_verdict(_cfg(max_drop=0.001), 1000, 900, [], {})
+        assert verdict == "FAIL"
+        assert len(reasons) >= 1
+        # drop_ratio = 100/1000 = 0.1000
+        drop_reason = next(r for r in reasons if "drop_ratio" in r)
+        assert "0.1000" in drop_reason
