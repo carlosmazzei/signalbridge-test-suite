@@ -96,16 +96,6 @@ class ApplicationManager:
             ),
             ModuleConfig(
                 key="2",
-                mode=Mode.COMMAND,
-                description="Send command",
-                builder=lambda: CommandMode(self.serial_interface),
-                runner=lambda module: module.execute_command_mode(),
-                handler=lambda module, command, data, byte_string: (
-                    module.handle_message(command, data, byte_string)
-                ),
-            ),
-            ModuleConfig(
-                key="3",
                 mode=Mode.REGRESSION,
                 description="Regression test",
                 builder=lambda: RegressionTest(self.serial_interface),
@@ -115,25 +105,7 @@ class ApplicationManager:
                 ),
             ),
             ModuleConfig(
-                key="4",
-                mode=Mode.VISUALIZE,
-                description="Visualize test results",
-                builder=lambda: VisualizeResults(),  # noqa: PLW0108  # lambda needed to support mock patching during tests
-                runner=lambda module: module.execute_visualization(),
-                requires_serial=False,
-            ),
-            ModuleConfig(
-                key="5",
-                mode=Mode.STATUS,
-                description="Status mode",
-                builder=lambda: StatusMode(self.serial_interface),
-                runner=lambda module: module.execute_test(),
-                handler=lambda module, command, data, _unused: module.handle_message(
-                    command, data
-                ),
-            ),
-            ModuleConfig(
-                key="6",
+                key="3",
                 mode=Mode.BAUD_SWEEP,
                 description="Baud rate sweep test",
                 builder=lambda: BaudRateTest(self.serial_interface),
@@ -143,7 +115,7 @@ class ApplicationManager:
                 ),
             ),
             ModuleConfig(
-                key="7",
+                key="4",
                 mode=Mode.STRESS,
                 description="Stress test (automated scenarios)",
                 builder=lambda: StressTest(
@@ -153,6 +125,34 @@ class ApplicationManager:
                 handler=lambda module, command, data, _unused: module.handle_message(
                     command, data
                 ),
+            ),
+            ModuleConfig(
+                key="5",
+                mode=Mode.COMMAND,
+                description="Send command",
+                builder=lambda: CommandMode(self.serial_interface),
+                runner=lambda module: module.execute_command_mode(),
+                handler=lambda module, command, data, byte_string: (
+                    module.handle_message(command, data, byte_string)
+                ),
+            ),
+            ModuleConfig(
+                key="6",
+                mode=Mode.STATUS,
+                description="Status mode",
+                builder=lambda: StatusMode(self.serial_interface),
+                runner=lambda module: module.execute_test(),
+                handler=lambda module, command, data, _unused: module.handle_message(
+                    command, data
+                ),
+            ),
+            ModuleConfig(
+                key="7",
+                mode=Mode.VISUALIZE,
+                description="Visualize test results",
+                builder=lambda: VisualizeResults(),  # noqa: PLW0108  # lambda needed to support mock patching during tests
+                runner=lambda module: module.execute_visualization(),
+                requires_serial=False,
             ),
         ]
         self.module_configs_by_mode = {cfg.mode: cfg for cfg in self.module_configs}
@@ -282,8 +282,8 @@ class ApplicationManager:
     # Menu groups: (group label, list of mode keys that belong to it).
     # Key "0" (connection toggle) and the exit key are handled separately.
     _MENU_GROUPS: ClassVar[list[tuple[str, list[str]]]] = [
-        ("Tests", ["1", "3", "6", "7"]),
-        ("Tools & Analysis", ["2", "5", "4"]),
+        ("Tests", ["1", "2", "3", "4"]),
+        ("Tools & Analysis", ["5", "6", "7"]),
     ]
 
     def _build_menu_table(self) -> Table:
