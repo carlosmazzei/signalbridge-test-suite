@@ -146,9 +146,9 @@ class BaudRateTest(BaseTest):
         if use_default:
             baud_rates = DEFAULT_BAUD_RATES
         else:
-            baud_input = input(
+            baud_input = console.input(
                 "Enter baud rates separated by commas "
-                f"(default: {DEFAULT_BAUD_RATES}): "
+                f"[dim](default: {DEFAULT_BAUD_RATES})[/dim]: "
             )
             if baud_input.strip():
                 baud_rates = [int(b.strip()) for b in baud_input.split(",")]

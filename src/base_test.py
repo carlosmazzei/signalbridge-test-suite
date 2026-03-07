@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from serial_interface import SerialCommand, SerialInterface
+from ui_console import console
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -365,7 +366,9 @@ class BaseTest:
 
     def _get_user_input(self, prompt: str, default_value: Any) -> Any:
         """Get user input with default fallback."""
-        user_input = input(f"{prompt} (Press Enter to use default: {default_value}): ")
+        user_input = console.input(
+            f"[bold]{prompt}[/bold] [dim](default: {default_value})[/dim]: "
+        )
         return (
             default_value
             if user_input.strip() == ""

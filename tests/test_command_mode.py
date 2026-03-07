@@ -168,19 +168,16 @@ class TestPrintDecodedMessage:
 class TestExecuteCommandMode:
     """Tests for CommandMode.execute_command_mode."""
 
-    def test_not_open_logs_message(self) -> None:
-        """When serial is closed, execute_command_mode should log and return."""
+    def test_not_open_shows_panel(self) -> None:
+        """When serial is closed, execute_command_mode should show a Rich panel."""
         ser = Mock(spec=SerialInterface)
         ser.is_open.return_value = False
         cm = CommandMode(ser)
-        logged: list[str] = []
-        with patch("command_mode.logger") as mock_log:
-            mock_log.info.side_effect = lambda msg, *args: logged.append(
-                msg % args if args else msg
-            )
+        with patch("command_mode.console.print") as mock_console_print:
             cm.execute_command_mode()
-        combined = " ".join(logged).lower()
-        assert "not available" in combined or "not connected" in combined
+        mock_console_print.assert_called_once()
+        panel = mock_console_print.call_args[0][0]
+        assert "not connected" in str(panel.renderable).lower()
 
     def test_x_input_exits_loop(self, command_mode: CommandMode) -> None:
         """Entering 'x' should set running=False and exit the loop."""

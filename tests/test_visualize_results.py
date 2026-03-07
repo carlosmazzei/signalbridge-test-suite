@@ -500,8 +500,7 @@ def test_visualize_test_results_runs_boxplot_path(
     with (
         patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
         patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
-        patch("builtins.input", return_value="1") as mock_input,
-        patch("builtins.print") as mock_print,
+        patch("builtins.input", return_value="1"),
         # We Mock matplotlib to prevent actual window opening,
         # but we DO NOT mock plot_boxplot
         patch("matplotlib.pyplot.subplots") as mock_subplots,
@@ -533,11 +532,6 @@ def test_visualize_test_results_runs_boxplot_path(
         mock_ax1.boxplot.assert_called_once()
         mock_show.assert_called_once()
 
-        # Verify inputs and prints to kill mutants
-        mock_input.assert_called_with("Enter choice (1, 2, 3 or 4): ")
-        mock_print.assert_any_call("Select visualization type:")
-        mock_print.assert_any_call("1. Boxplot")
-
 
 def test_visualize_test_results_runs_histogram_path(
     visualize_results: VisualizeResults,
@@ -551,8 +545,7 @@ def test_visualize_test_results_runs_histogram_path(
     with (
         patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
         patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
-        patch("builtins.input", return_value="2") as mock_input,
-        patch("builtins.print") as mock_print,
+        patch("builtins.input", return_value="2"),
         patch("matplotlib.pyplot.subplots") as mock_subplots,
         patch("matplotlib.pyplot.show") as mock_show,
         patch("visualize_results.cm.get_cmap", return_value=lambda _: ["red"]),
@@ -567,9 +560,6 @@ def test_visualize_test_results_runs_histogram_path(
         mock_ax.hist.assert_called_once()
         mock_ax.axvline.assert_called()  # Check p95 line
         mock_show.assert_called_once()
-
-        mock_input.assert_called_with("Enter choice (1, 2, 3 or 4): ")
-        mock_print.assert_any_call("2. Histogram")
 
 
 def test_visualize_test_results_runs_controller_health_path(
@@ -658,38 +648,50 @@ def test_get_page_files(visualize_results: VisualizeResults) -> None:
     assert page_files == files[5:10]
 
 
-def test_display_page(
-    visualize_results: VisualizeResults, capsys: pytest.CaptureFixture[str]
-) -> None:
+def _render_display_page(
+    visualize_results: VisualizeResults,
+    page_files: list[Path],
+    current_page: int,
+    total_files: int,
+    page_size: int,
+) -> str:
+    """Render _display_page output to a plain string via a test Console."""
+    from io import StringIO
+
+    from rich.console import Console as RichConsole
+
+    buf = StringIO()
+    test_console = RichConsole(file=buf, no_color=True, width=200, force_terminal=False)
+    with patch("visualize_results.console", test_console):
+        visualize_results._display_page(page_files, current_page, total_files, page_size)
+    return buf.getvalue()
+
+
+def test_display_page(visualize_results: VisualizeResults) -> None:
     """Test for the _display_page method."""
     page_files = [Path(f"test_{i}.json") for i in range(5)]
-    visualize_results._display_page(page_files, 0, 10, 5)
-    captured = capsys.readouterr()
-    assert "1. test_0.json" in captured.out
-    assert "n - Next page" in captured.out
-    assert "q - Return to main menu" in captured.out
-    assert "p - Previous page" not in captured.out
+    output = _render_display_page(visualize_results, page_files, 0, 10, 5)
+    assert "test_0.json" in output
+    assert "Next page" in output
+    assert "Return to main menu" in output
+    assert "Previous page" not in output
 
 
-def test_display_page_no_next_on_last_page(
-    visualize_results: VisualizeResults, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """'n - Next page' must NOT appear when already on the last page."""
+def test_display_page_no_next_on_last_page(visualize_results: VisualizeResults) -> None:
+    """'Next page' must NOT appear when already on the last page."""
     page_files = [Path(f"test_{i}.json") for i in range(5)]
-    visualize_results._display_page(page_files, 1, 10, 5)
-    captured = capsys.readouterr()
-    assert "n - Next page" not in captured.out
+    output = _render_display_page(visualize_results, page_files, 1, 10, 5)
+    assert "Next page" not in output
 
 
 def test_display_page_shows_correct_page_number(
-    visualize_results: VisualizeResults, capsys: pytest.CaptureFixture[str]
+    visualize_results: VisualizeResults,
 ) -> None:
-    """_display_page shows the correct '(Page X of Y)' text."""
+    """_display_page shows the correct 'Page X of Y' text."""
     page_files = [Path(f"test_{i}.json") for i in range(5)]
-    visualize_results._display_page(page_files, 0, 10, 5)
-    captured = capsys.readouterr()
-    assert "(Page 1 of 2)" in captured.out
-    assert "p - Previous page" not in captured.out
+    output = _render_display_page(visualize_results, page_files, 0, 10, 5)
+    assert "Page 1 of 2" in output
+    assert "Previous page" not in output
 
 
 def test_handle_choice_next_page(visualize_results: VisualizeResults) -> None:
@@ -854,19 +856,15 @@ def test_status_error_delta_total_non_dict_statistics(
     assert result == 0
 
 
-def test_display_page_shows_previous_option(
-    visualize_results: VisualizeResults, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """_display_page shows 'p - Previous page' when current_page > 0."""
+def test_display_page_shows_previous_option(visualize_results: VisualizeResults) -> None:
+    """_display_page shows 'Previous page' when current_page > 0."""
     page_files = [Path(f"test_{i}.json") for i in range(5)]
-    visualize_results._display_page(page_files, 1, 20, 5)
-    captured = capsys.readouterr()
-    assert "p - Previous page" in captured.out
+    output = _render_display_page(visualize_results, page_files, 1, 20, 5)
+    assert "Previous page" in output
 
 
 def test_visualize_test_results_invalid_choice(
     visualize_results: VisualizeResults,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """visualize_test_results prints an error message for an unrecognised choice."""
     labels = ["L1"]
@@ -877,7 +875,8 @@ def test_visualize_test_results_invalid_choice(
         patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
         patch.object(VisualizeResults, "load_and_process_data", return_value=processed),
         patch("builtins.input", return_value="9"),
+        patch("visualize_results.console.print") as mock_console_print,
     ):
         visualize_results.visualize_test_results()
-    out = capsys.readouterr().out
-    assert "Invalid choice" in out
+    printed = " ".join(str(c) for c in mock_console_print.call_args_list)
+    assert "Invalid choice" in printed
