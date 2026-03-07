@@ -16,6 +16,9 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from alive_progress import alive_bar
+from rich import box
+from rich.panel import Panel
+from rich.table import Table
 
 from base_test import (
     STATISTICS_HEADER_BYTES,
@@ -33,6 +36,7 @@ from stress_evaluator import (
     evaluate_verdict,
 )
 from stress_reporter import print_summary, write_json_report
+from ui_console import console
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -86,10 +90,13 @@ class StressTest(BaseTest):
 
     def _show_options(self) -> list[ScenarioConfig]:
         """Show options to user and get input on which scenarios to run."""
-        print("\nSelect Stress Scenario Profile:")
-        print("0. Run ALL scenarios (default)")
+        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        table.add_column("key", style="bold cyan", width=4)
+        table.add_column("label")
+        table.add_row("[0]", "Run ALL scenarios (default)")
         for idx, cfg in enumerate(self.config.scenarios, 1):
-            print(f"{idx}. Run '{cfg.name}' only")
+            table.add_row(f"[{idx}]", f"Run '{cfg.name}' only")
+        console.print(Panel(table, title="Stress Scenario Profile", title_align="left"))
 
         choice = self._get_user_input("Enter a choice", 0)
 

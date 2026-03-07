@@ -6,10 +6,12 @@ import sys
 import threading
 
 from cobs import cobs
+from rich.panel import Panel
 
 from checksum import calculate_checksum
 from logger_config import setup_logging
 from serial_interface import SerialCommand, SerialInterface
+from ui_console import console
 
 setup_logging()
 
@@ -44,6 +46,13 @@ class CommandMode:
     def execute_command_mode(self) -> None:
         """Execute the command mode loop."""
         if self.serial_interface.is_open():
+            console.print(
+                Panel(
+                    "[dim]Type hex data to send. Enter [bold]x[/bold] to exit.[/dim]",
+                    title="Command Mode",
+                    title_align="left",
+                )
+            )
             self.running = True
             message_thread = threading.Thread(target=self._process_messages)
             message_thread.start()
@@ -62,8 +71,12 @@ class CommandMode:
 
             message_thread.join()
         else:
-            logger.info(
-                "Command mode is not available. Serial interface is not connected.",
+            console.print(
+                Panel(
+                    "[yellow]Serial interface is not connected.[/yellow]",
+                    title="Command Mode",
+                    title_align="left",
+                )
             )
 
     def _print_prompt(self) -> None:

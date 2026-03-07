@@ -9,10 +9,14 @@ from typing import ClassVar
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm
+from rich import box
+from rich.panel import Panel
+from rich.table import Table
 
 from base_test import STATISTICS_DISPLAY_NAMES, STATUS_ERROR_KEYS
 from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
+from ui_console import console
 
 # setup_logging() removed to prevent side effects on import
 
@@ -45,7 +49,9 @@ class VisualizeResults:
             )
             self._display_page(page_files, current_page, len(files), page_size)
 
-            choice = input("\nEnter your choice (number, n, p, or q): ").lower()
+            choice = console.input(
+            "\n[bold]Enter your choice[/bold] (number, n, p, or q): "
+        ).lower()
             result = self._handle_choice(
                 choice, page_files, current_page, files, page_size
             )
@@ -81,19 +87,24 @@ class VisualizeResults:
         page_size: int,
     ) -> None:
         """Display the current page of files and options."""
-        print("\nTest files:")
+        total_pages = self._get_total_pages(total_files, page_size)
+        table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        table.add_column("key", style="bold cyan", width=4)
+        table.add_column("label")
         for idx, file in enumerate(page_files, start=1):
-            print(f"{idx}. {file.name}")
-
-        print("\nOptions:")
+            table.add_row(f"[{idx}]", file.name)
+        table.add_section()
         if (current_page + 1) * page_size < total_files:
-            print("n - Next page")
+            table.add_row("[n]", "Next page")
         if current_page > 0:
-            print("p - Previous page")
-        print("q - Return to main menu")
-        print(
-            f"(Page {current_page + 1} of "
-            f"{self._get_total_pages(total_files, page_size)})"
+            table.add_row("[p]", "Previous page")
+        table.add_row("[q]", "Return to main menu")
+        console.print(
+            Panel(
+                table,
+                title=f"Test Files  (Page {current_page + 1} of {total_pages})",
+                title_align="left",
+            )
         )
 
     def _handle_choice(
@@ -605,8 +616,14 @@ class VisualizeResults:
             ]
 
             if len(filtered_error_types) == 0:
-                print("\n✅ No errors detected across all test series!")
-                print("Controller health is excellent - all error counters are zero.\n")
+                _health_msg = (
+                    "[bold green]✅ No errors detected across all test series!\n"
+                    "Controller health is excellent - all error counters are zero."
+                    "[/bold green]"
+                )
+                console.print(
+                    Panel(_health_msg, title="Controller Health", title_align="left")
+                )
                 return
 
             # Create figure with subplots
@@ -803,12 +820,15 @@ class VisualizeResults:
             return
 
         labels, test_data, stats_data, samples, jitter, error_counters = processed_data
-        print("Select visualization type:")
-        print("1. Boxplot")
-        print("2. Histogram")
-        print("3. Controller health")
-        print("4. Error counter details")
-        choice = input("Enter choice (1, 2, 3 or 4): ")
+        viz_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        viz_table.add_column("key", style="bold cyan", width=4)
+        viz_table.add_column("label")
+        viz_table.add_row("[1]", "Boxplot")
+        viz_table.add_row("[2]", "Histogram")
+        viz_table.add_row("[3]", "Controller health")
+        viz_table.add_row("[4]", "Error counter details")
+        console.print(Panel(viz_table, title="Visualization Type", title_align="left"))
+        choice = console.input("[bold]Enter choice:[/bold] ")
         if choice == "1":
             self.plot_boxplot(labels, test_data, stats_data, samples, jitter=jitter)
         elif choice == "2":
@@ -818,7 +838,9 @@ class VisualizeResults:
         elif choice == "4":
             self.plot_error_counter_details(labels, error_counters)
         else:
-            print("Invalid choice. Please select 1, 2, 3 or 4.")
+            console.print(
+                "[yellow]Invalid choice. Please select 1, 2, 3 or 4.[/yellow]"
+            )
 
     def _visualize_stress_run(self, data: dict) -> None:
         """Visualize a stress run result JSON."""

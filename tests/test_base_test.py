@@ -483,7 +483,7 @@ class TestGetUserInput:
 
     def test_includes_default_in_prompt(self, base_test: BaseTest) -> None:
         """Prompt string should mention the default value."""
-        with patch("builtins.input", return_value="") as mock_input:
+        with patch("base_test.console.input", return_value="") as mock_input:
             base_test._get_user_input("Enter value", 77)
         call_arg = mock_input.call_args[0][0]
         assert "77" in call_arg
