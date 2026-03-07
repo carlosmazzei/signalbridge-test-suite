@@ -192,3 +192,107 @@ class TestPrintSummary:
         assert "echo_burst" in out
         assert "mixed_command_burst" in out
         assert "WARN" in out
+
+    def test_drop_percentage_value(self, capsys: pytest.CaptureFixture) -> None:
+        """The computed drop_ratio * 100 value must appear in the output."""
+        scenario = ScenarioResult(
+            name="half_drop",
+            run_id="run-drop",
+            started_at="2026-01-01T00:00:00+00:00",
+            ended_at="2026-01-01T00:00:30+00:00",
+            command_profile="echo_only",
+            messages_sent=100,
+            messages_received=50,
+            drop_ratio=0.5,
+            latencies_ms=[10.0],
+            p50_ms=10.0,
+            p95_ms=10.0,
+            p99_ms=10.0,
+            status_delta={},
+            task_snapshot={},
+            verdict="FAIL",
+            failure_reasons=[],
+        )
+        run = StressRunResult(
+            run_id="run-drop",
+            port="/dev/ttyACM0",
+            baudrate=230400,
+            started_at="",
+            ended_at="",
+            scenarios=[scenario],
+            overall_verdict="FAIL",
+        )
+        print_summary(run)
+        out = capsys.readouterr().out
+        assert "50.00%" in out
+
+
+# ---------------------------------------------------------------------------
+# Verdict mappings
+# ---------------------------------------------------------------------------
+
+
+class TestVerdictMappings:
+    """Assert exact values for _VERDICT_STYLE and _VERDICT_ICON dicts."""
+
+    def test_verdict_style_pass(self) -> None:
+        from stress_reporter import _VERDICT_STYLE
+
+        assert _VERDICT_STYLE["PASS"] == "bold green"  # noqa: S105
+
+    def test_verdict_style_warn(self) -> None:
+        from stress_reporter import _VERDICT_STYLE
+
+        assert _VERDICT_STYLE["WARN"] == "bold yellow"
+
+    def test_verdict_style_fail(self) -> None:
+        from stress_reporter import _VERDICT_STYLE
+
+        assert _VERDICT_STYLE["FAIL"] == "bold red"
+
+    def test_verdict_icon_pass(self) -> None:
+        from stress_reporter import _VERDICT_ICON
+
+        assert _VERDICT_ICON["PASS"] == "✅ PASS"  # noqa: S105
+
+    def test_verdict_icon_warn(self) -> None:
+        from stress_reporter import _VERDICT_ICON
+
+        assert _VERDICT_ICON["WARN"] == "⚠️  WARN"
+
+    def test_verdict_icon_fail(self) -> None:
+        from stress_reporter import _VERDICT_ICON
+
+        assert _VERDICT_ICON["FAIL"] == "❌ FAIL"
+
+
+# ---------------------------------------------------------------------------
+# write_json_report - additional coverage
+# ---------------------------------------------------------------------------
+
+
+class TestWriteJsonReportExtra:
+    def test_write_json_report_oserror(self, tmp_path: Path) -> None:
+        """OSError during write is logged but does not raise."""
+        from unittest.mock import patch
+
+        result = _run_result()
+        with patch("stress_reporter.json.dump", side_effect=OSError("disk full")):
+            out_path = write_json_report(result, output_dir=str(tmp_path))
+        # Function must return the path even on error
+        assert out_path is not None
+
+    def test_filename_has_stress_suffix(self, tmp_path: Path) -> None:
+        """The generated filename must end with '_stress.json'."""
+        result = _run_result()
+        out_path = write_json_report(result, output_dir=str(tmp_path))
+        assert out_path.name.endswith("_stress.json")
+
+    def test_json_output_is_indented(self, tmp_path: Path) -> None:
+        """The JSON report must be pretty-printed with indent=4."""
+        result = _run_result()
+        out_path = write_json_report(result, output_dir=str(tmp_path))
+        raw = out_path.read_text(encoding="utf-8")
+        # Pretty-printed JSON has newlines and leading spaces for nested keys
+        assert "\n" in raw
+        assert '    "run_id"' in raw

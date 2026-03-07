@@ -487,3 +487,389 @@ class TestGetUserInput:
             base_test._get_user_input("Enter value", 77)
         call_arg = mock_input.call_args[0][0]
         assert "77" in call_arg
+
+
+# ---------------------------------------------------------------------------
+# _request_status_snapshot
+# ---------------------------------------------------------------------------
+class TestRequestStatusSnapshot:
+    """Tests for BaseTest._request_status_snapshot."""
+
+    def test_returns_incomplete_when_ser_is_none(self, mock_serial: Mock) -> None:
+        """When ser is None, should return incomplete snapshot."""
+        bt = BaseTest(mock_serial)
+        bt.ser = None
+        result = bt._request_status_snapshot()
+        assert result["complete"] is False
+        assert result["statistics"] == {}
+        assert result["tasks"] == {}
+        assert result["received"]["statistics"] == 0
+        assert result["received"]["tasks"] == 0
+
+    def test_sends_status_update_for_all_items(self, base_test: BaseTest) -> None:
+        """Should call _status_update for every STATISTICS and TASK item."""
+        with (
+            patch("base_test.time.sleep", return_value=None),
+            patch.object(base_test, "_status_update") as mock_update,
+            # Make perf_counter exceed deadline immediately so we don't loop
+            patch(
+                "base_test.time.perf_counter",
+                side_effect=[
+                    100.0,  # snapshot_marker
+                    100.0,  # deadline = perf_counter() + timeout_s
+                    200.0,  # first while check -> exceeds deadline, exit loop
+                    200.0,  # (any extra calls)
+                ],
+            ),
+        ):
+            base_test._request_status_snapshot(timeout_s=1.0)
+
+        stat_calls = [
+            c for c in mock_update.call_args_list if c[0][0] == STATISTICS_HEADER_BYTES
+        ]
+        task_calls = [
+            c for c in mock_update.call_args_list if c[0][0] == TASK_HEADER_BYTES
+        ]
+        assert len(stat_calls) == len(STATISTICS_ITEMS)
+        assert len(task_calls) == len(TASK_ITEMS)
+
+    def test_complete_when_all_responses_received(self, base_test: BaseTest) -> None:
+        """Should return complete=True when all items respond before deadline."""
+        marker_time = 100.0
+
+        # Pre-populate all timestamps as if responses came back after marker
+        for idx in STATISTICS_ITEMS:
+            base_test._statistics_updated_at[idx] = marker_time + 0.5
+        for idx in TASK_ITEMS:
+            base_test._task_updated_at[idx] = marker_time + 0.5
+
+        call_count = [0]
+
+        def fake_perf_counter() -> float:
+            call_count[0] += 1
+            # First call: snapshot_marker
+            if call_count[0] == 1:
+                return marker_time
+            # Second call: deadline calculation
+            if call_count[0] == 2:
+                return marker_time + 0.01
+            # Subsequent: within deadline so the loop checks and finds complete
+            return marker_time + 0.02
+
+        with (
+            patch("base_test.time.sleep", return_value=None),
+            patch("base_test.time.perf_counter", side_effect=fake_perf_counter),
+        ):
+            result = base_test._request_status_snapshot(timeout_s=5.0)
+
+        assert result["complete"] is True
+        assert result["received"]["statistics"] == len(STATISTICS_ITEMS)
+        assert result["received"]["tasks"] == len(TASK_ITEMS)
+
+    def test_incomplete_when_timeout_exceeded(self, base_test: BaseTest) -> None:
+        """Should return complete=False when timeout expires with partial responses."""
+        marker_time = 100.0
+
+        # Only update a subset of statistics timestamps
+        for idx in list(STATISTICS_ITEMS.keys())[:5]:
+            base_test._statistics_updated_at[idx] = marker_time + 0.5
+
+        call_count = [0]
+
+        def fake_perf_counter() -> float:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return marker_time
+            if call_count[0] == 2:
+                return marker_time + 0.01
+            # Immediately exceed deadline
+            return marker_time + 10.0
+
+        with (
+            patch("base_test.time.sleep", return_value=None),
+            patch("base_test.time.perf_counter", side_effect=fake_perf_counter),
+        ):
+            result = base_test._request_status_snapshot(timeout_s=1.0)
+
+        assert result["complete"] is False
+        assert result["received"]["statistics"] == 5
+        assert result["received"]["tasks"] == 0
+
+    def test_statistics_values_returned_in_snapshot(self, base_test: BaseTest) -> None:
+        """Snapshot should contain the current statistics values."""
+        base_test._statistics_values[0] = 42
+        base_test._statistics_values[12] = 999
+
+        # Exceed deadline immediately
+        with (
+            patch("base_test.time.sleep", return_value=None),
+            patch(
+                "base_test.time.perf_counter",
+                side_effect=[
+                    100.0,
+                    100.0,
+                    200.0,
+                    200.0,
+                ],
+            ),
+        ):
+            result = base_test._request_status_snapshot(timeout_s=1.0)
+
+        assert result["statistics"]["queue_send_error"] == 42
+        assert result["statistics"]["bytes_sent"] == 999
+
+    def test_task_values_returned_in_snapshot(self, base_test: BaseTest) -> None:
+        """Snapshot should contain the current task values."""
+        base_test._task_values[0] = {
+            "absolute_time_us": 5000,
+            "percent_time": 25,
+            "high_watermark": 1024,
+        }
+
+        with (
+            patch("base_test.time.sleep", return_value=None),
+            patch(
+                "base_test.time.perf_counter",
+                side_effect=[
+                    100.0,
+                    100.0,
+                    200.0,
+                    200.0,
+                ],
+            ),
+        ):
+            result = base_test._request_status_snapshot(timeout_s=1.0)
+
+        assert result["tasks"]["cdc_task"]["absolute_time_us"] == 5000
+        assert result["tasks"]["cdc_task"]["percent_time"] == 25
+        assert result["tasks"]["cdc_task"]["high_watermark"] == 1024
+
+
+# ---------------------------------------------------------------------------
+# publish — trailer byte verification
+# ---------------------------------------------------------------------------
+class TestPublishTrailerByte:
+    """Tests for trailer byte content in publish payloads."""
+
+    def test_publish_trailer_byte_value(
+        self, base_test: BaseTest, mock_serial: Mock
+    ) -> None:
+        """Trailer section of payload should be filled with 0x02 bytes."""
+        message_length = 10
+        base_test.publish(0, message_length)
+        written = mock_serial.write.call_args[0][0]
+        # Layout: HEADER(2) + m_length(1) + counter(2) + trailer(remaining)
+        trailer = written[5:]
+        assert len(trailer) > 0
+        assert all(b == 0x02 for b in trailer)
+
+    def test_publish_trailer_all_0x02_various_lengths(
+        self, base_test: BaseTest, mock_serial: Mock
+    ) -> None:
+        """Trailer bytes should all be 0x02 for different message lengths."""
+        for length in [7, 8, 9, 10]:
+            mock_serial.reset_mock()
+            base_test.publish(0, length)
+            written = mock_serial.write.call_args[0][0]
+            trailer = written[5:]
+            expected_trailer_len = length - len(HEADER_BYTES) - 3
+            assert len(trailer) == expected_trailer_len
+            assert trailer == bytes([0x02] * expected_trailer_len)
+
+
+# ---------------------------------------------------------------------------
+# handle_message — ECHO latency bounds
+# ---------------------------------------------------------------------------
+class TestEchoLatencyBounds:
+    """Tests for echo latency being positive and bounded."""
+
+    def _make_echo_data(self, counter: int) -> bytes:
+        """Build a fake decoded_data for an ECHO_COMMAND with the given counter."""
+        prefix = bytes([0x00, 0x00, 0x00])
+        return prefix + counter.to_bytes(2, byteorder="big")
+
+    def test_echo_latency_is_positive_and_bounded(self, base_test: BaseTest) -> None:
+        """Echo latency should be > 0 and < 1.0 second."""
+        counter = 10
+        base_test.latency_msg_sent[counter] = time.perf_counter() - 0.005
+        data = self._make_echo_data(counter)
+        base_test.handle_message(SerialCommand.ECHO_COMMAND.value, data)
+        latency = base_test.latency_msg_received[counter]
+        assert latency > 0
+        assert latency < 1.0
+
+    def test_echo_latency_reflects_send_time_difference(
+        self, base_test: BaseTest
+    ) -> None:
+        """Latency should approximately reflect the time delta from send."""
+        counter = 20
+        base_test.latency_msg_sent[counter] = time.perf_counter() - 0.050
+        data = self._make_echo_data(counter)
+        base_test.handle_message(SerialCommand.ECHO_COMMAND.value, data)
+        latency = base_test.latency_msg_received[counter]
+        assert latency >= 0.040
+        assert latency < 1.0
+
+
+# ---------------------------------------------------------------------------
+# handle_message — STATISTICS with multiple values
+# ---------------------------------------------------------------------------
+class TestStatisticsWithDifferentValues:
+    """Tests for statistics handling with multiple distinct values."""
+
+    def _make_stats_data(self, index: int, value: int) -> bytes:
+        """Build fake decoded_data for a statistics status message."""
+        prefix = bytes([0x00, 0x00, 0x00, index])
+        return prefix + value.to_bytes(4, byteorder="big")
+
+    def test_statistics_with_different_values(self, base_test: BaseTest) -> None:
+        """Multiple statistics values should be stored independently."""
+        test_cases = [
+            (0, 100),
+            (1, 200),
+            (5, 999),
+            (12, 54321),
+        ]
+        for idx, value in test_cases:
+            data = self._make_stats_data(idx, value)
+            base_test.handle_message(
+                SerialCommand.STATISTICS_STATUS_COMMAND.value, data
+            )
+
+        for idx, expected in test_cases:
+            assert base_test._statistics_values[idx] == expected
+
+    def test_statistics_slice_bounds_correct(self, base_test: BaseTest) -> None:
+        """Verify bytes [4:8] are read correctly for the 4-byte value."""
+        # Use a value that would differ if slicing is off by one
+        idx = 3
+        value = 0x01020304
+        data = self._make_stats_data(idx, value)
+        base_test.handle_message(SerialCommand.STATISTICS_STATUS_COMMAND.value, data)
+        assert base_test._statistics_values[idx] == 0x01020304
+
+    def test_statistics_value_zero_vs_nonzero(self, base_test: BaseTest) -> None:
+        """Setting a value and then overwriting with zero should store zero."""
+        idx = 7
+        data_nonzero = self._make_stats_data(idx, 500)
+        base_test.handle_message(
+            SerialCommand.STATISTICS_STATUS_COMMAND.value, data_nonzero
+        )
+        assert base_test._statistics_values[idx] == 500
+
+        data_zero = self._make_stats_data(idx, 0)
+        base_test.handle_message(
+            SerialCommand.STATISTICS_STATUS_COMMAND.value, data_zero
+        )
+        assert base_test._statistics_values[idx] == 0
+
+
+# ---------------------------------------------------------------------------
+# _write_output_to_file — encoding verification
+# ---------------------------------------------------------------------------
+class TestWriteOutputEncoding:
+    """Tests for _write_output_to_file encoding parameter."""
+
+    def test_write_output_encoding_utf8(self, base_test: BaseTest) -> None:
+        """open() should be called with encoding='utf-8'."""
+        data = [{"test": 0}]
+        m = mock_open()
+        with patch("pathlib.Path.open", m):
+            base_test._write_output_to_file(Path("output.json"), data)
+        m.assert_called_once_with("w", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# _calculate_status_delta — missing keys
+# ---------------------------------------------------------------------------
+class TestStatusDeltaMissingKeys:
+    """Tests for _calculate_status_delta with missing keys."""
+
+    def test_status_delta_missing_keys_in_before(self, base_test: BaseTest) -> None:
+        """When 'before' has empty statistics, defaults to 0 via .get()."""
+        before = {"statistics": {}, "tasks": {}}
+        after = {
+            "statistics": dict.fromkeys(STATISTICS_ITEMS.values(), 10),
+            "tasks": {
+                name: {
+                    "absolute_time_us": 100,
+                    "percent_time": 50,
+                    "high_watermark": 200,
+                }
+                for name in TASK_ITEMS.values()
+            },
+        }
+        delta = base_test._calculate_status_delta(before, after)
+        for key in STATISTICS_ITEMS.values():
+            assert delta["statistics"][key] == 10
+        for task_delta in delta["tasks"].values():
+            assert task_delta["absolute_time_us"] == 100
+            assert task_delta["percent_time"] == 50
+            assert task_delta["high_watermark"] == 200
+
+    def test_status_delta_missing_keys_in_after(self, base_test: BaseTest) -> None:
+        """When 'after' has empty statistics, defaults to 0 via .get()."""
+        before = {
+            "statistics": dict.fromkeys(STATISTICS_ITEMS.values(), 10),
+            "tasks": {
+                name: {
+                    "absolute_time_us": 100,
+                    "percent_time": 50,
+                    "high_watermark": 200,
+                }
+                for name in TASK_ITEMS.values()
+            },
+        }
+        after = {"statistics": {}, "tasks": {}}
+        delta = base_test._calculate_status_delta(before, after)
+        for key in STATISTICS_ITEMS.values():
+            assert delta["statistics"][key] == -10
+        for task_delta in delta["tasks"].values():
+            assert task_delta["absolute_time_us"] == -100
+            assert task_delta["percent_time"] == -50
+            assert task_delta["high_watermark"] == -200
+
+    def test_status_delta_both_empty(self, base_test: BaseTest) -> None:
+        """When both snapshots have empty dicts, all deltas should be 0."""
+        before = {"statistics": {}, "tasks": {}}
+        after = {"statistics": {}, "tasks": {}}
+        delta = base_test._calculate_status_delta(before, after)
+        for key in STATISTICS_ITEMS.values():
+            assert delta["statistics"][key] == 0
+        for task_delta in delta["tasks"].values():
+            assert task_delta["absolute_time_us"] == 0
+            assert task_delta["percent_time"] == 0
+            assert task_delta["high_watermark"] == 0
+
+    def test_status_delta_partial_keys(self, base_test: BaseTest) -> None:
+        """When only some keys are present, missing ones default to 0."""
+        first_stat = next(iter(STATISTICS_ITEMS.values()))
+        first_task = next(iter(TASK_ITEMS.values()))
+        before = {
+            "statistics": {first_stat: 5},
+            "tasks": {
+                first_task: {
+                    "absolute_time_us": 10,
+                    "percent_time": 20,
+                    "high_watermark": 30,
+                }
+            },
+        }
+        after = {
+            "statistics": {first_stat: 15},
+            "tasks": {
+                first_task: {
+                    "absolute_time_us": 50,
+                    "percent_time": 60,
+                    "high_watermark": 70,
+                }
+            },
+        }
+        delta = base_test._calculate_status_delta(before, after)
+        assert delta["statistics"][first_stat] == 10
+        assert delta["tasks"][first_task]["absolute_time_us"] == 40
+        assert delta["tasks"][first_task]["percent_time"] == 40
+        assert delta["tasks"][first_task]["high_watermark"] == 40
+        # Other stats should be 0 - 0 = 0
+        second_stat = list(STATISTICS_ITEMS.values())[1]
+        assert delta["statistics"][second_stat] == 0

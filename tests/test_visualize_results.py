@@ -884,3 +884,217 @@ def test_visualize_test_results_invalid_choice(
         visualize_results.visualize_test_results()
     printed = " ".join(str(c) for c in mock_console_print.call_args_list)
     assert "Invalid choice" in printed
+
+
+# ---------------------------------------------------------------------------
+# New mutation-killing tests
+# ---------------------------------------------------------------------------
+
+
+class TestLoadAndProcessDataValues:
+    """Assert load_and_process_data computed values are correctly scaled."""
+
+    def test_stats_data_values_are_scaled(
+        self, visualize_results: VisualizeResults
+    ) -> None:
+        """Verify stats_data latency values are multiplied by 1000."""
+        mock_data = [
+            {
+                "test": "t1",
+                "waiting_time": 0.1,
+                "samples": 5,
+                "latency_avg": 0.01,
+                "latency_min": 0.005,
+                "latency_max": 0.02,
+                "latency_p95": 0.015,
+                "dropped_messages": 0,
+                "bitrate": 200.0,
+                "jitter": False,
+                "results": [0.01, 0.02, 0.03],
+            }
+        ]
+        with patch("pathlib.Path.open", mock_open(read_data=json.dumps(mock_data))):
+            result = visualize_results.load_and_process_data(Path("test.json"))
+            assert result is not None
+            labels, test_data, stats_data, samples, jitter, error_counters = result
+            assert stats_data[0]["avg"] == 0.01 * 1000  # 10.0
+            assert stats_data[0]["min"] == 0.005 * 1000  # 5.0
+            assert stats_data[0]["max"] == 0.02 * 1000  # 20.0
+            assert stats_data[0]["p95"] == 0.015 * 1000  # 15.0
+
+    def test_test_data_values_are_scaled(
+        self, visualize_results: VisualizeResults
+    ) -> None:
+        """Verify test_data (results) values are multiplied by 1000."""
+        raw_results = [0.01, 0.02, 0.03]
+        mock_data = [
+            {
+                "test": "t1",
+                "waiting_time": 0.1,
+                "samples": 3,
+                "latency_avg": 0.01,
+                "latency_min": 0.005,
+                "latency_max": 0.02,
+                "latency_p95": 0.015,
+                "dropped_messages": 0,
+                "bitrate": 200.0,
+                "jitter": False,
+                "results": raw_results,
+            }
+        ]
+        with patch("pathlib.Path.open", mock_open(read_data=json.dumps(mock_data))):
+            result = visualize_results.load_and_process_data(Path("test.json"))
+            assert result is not None
+            _, test_data, *_ = result
+            expected = np.array(raw_results) * 1000
+            np.testing.assert_array_almost_equal(test_data[0], expected)
+
+
+def test_load_data_with_baudrate(visualize_results: VisualizeResults) -> None:
+    """Verify that a series with 'baudrate' key formats the label differently."""
+    mock_data = [
+        {
+            "test": "uart_test",
+            "waiting_time": 0.1,
+            "samples": 5,
+            "latency_avg": 0.01,
+            "latency_min": 0.005,
+            "latency_max": 0.02,
+            "latency_p95": 0.015,
+            "dropped_messages": 0,
+            "bitrate": 300.0,
+            "baudrate": 115200,
+            "jitter": False,
+            "results": [0.01, 0.02, 0.03],
+        }
+    ]
+    with patch("pathlib.Path.open", mock_open(read_data=json.dumps(mock_data))):
+        result = visualize_results.load_and_process_data(Path("test.json"))
+        assert result is not None
+        labels, *_ = result
+        assert "baud:" in labels[0]
+        assert "115200" in labels[0]
+        assert "w.time:" not in labels[0]
+
+
+def test_load_data_returns_dict_for_stress(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Verify that JSON with 'scenarios' key returns the raw dict."""
+    stress_data = {
+        "scenarios": [{"name": "s1"}],
+        "run_id": "abc",
+        "overall_verdict": "PASS",
+    }
+    with patch("pathlib.Path.open", mock_open(read_data=json.dumps(stress_data))):
+        result = visualize_results.load_and_process_data(Path("test.json"))
+        assert isinstance(result, dict)
+        assert "scenarios" in result
+        assert result["run_id"] == "abc"
+
+
+def test_load_data_empty_results_raises(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Verify ValueError with 'No valid data' is raised for empty results."""
+    mock_data: list[dict] = []
+    with patch("pathlib.Path.open", mock_open(read_data=json.dumps(mock_data))):
+        result = visualize_results.load_and_process_data(Path("test.json"))
+        # Empty list means no series processed -> "No valid data" -> caught -> None
+        assert result is None
+
+
+class TestExecuteVisualization:
+    """Tests for execute_visualization."""
+
+    def test_execute_calls_visualize_test_results(
+        self, visualize_results: VisualizeResults
+    ) -> None:
+        """Verify execute_visualization calls visualize_test_results."""
+        with patch.object(VisualizeResults, "visualize_test_results") as mock_viz:
+            visualize_results.execute_visualization()
+            mock_viz.assert_called_once()
+
+
+def test_visualize_stress_run_called_for_dict(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Verify _visualize_stress_run is called when load_and_process_data returns a dict."""
+    stress_data = {
+        "scenarios": [{"name": "s1"}],
+        "run_id": "xyz",
+        "overall_verdict": "PASS",
+    }
+    with (
+        patch.object(VisualizeResults, "select_test_file", return_value=Path("x.json")),
+        patch.object(
+            VisualizeResults, "load_and_process_data", return_value=stress_data
+        ),
+        patch.object(VisualizeResults, "_visualize_stress_run") as mock_stress,
+    ):
+        visualize_results.visualize_test_results()
+        mock_stress.assert_called_once_with(stress_data)
+
+
+def test_status_error_delta_total_values(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Verify _status_error_delta_total sums all known error key values correctly."""
+    from base_test import STATUS_ERROR_KEYS
+
+    # Provide known values for every key
+    stats_values = {key: idx + 1 for idx, key in enumerate(STATUS_ERROR_KEYS)}
+    series: dict[str, object] = {
+        "status_delta": {
+            "statistics": stats_values,
+        }
+    }
+    result = visualize_results._status_error_delta_total(series)
+    expected = sum(idx + 1 for idx in range(len(STATUS_ERROR_KEYS)))
+    assert result == expected
+
+
+def test_error_counters_content(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Verify error_counters dict has correct keys from STATUS_ERROR_KEYS and values."""
+    from base_test import STATUS_ERROR_KEYS
+
+    error_key_0 = STATUS_ERROR_KEYS[0]
+    error_key_1 = STATUS_ERROR_KEYS[1]
+    mock_data = [
+        {
+            "test": "t1",
+            "waiting_time": 0.1,
+            "samples": 5,
+            "latency_avg": 0.01,
+            "latency_min": 0.005,
+            "latency_max": 0.02,
+            "latency_p95": 0.015,
+            "dropped_messages": 0,
+            "bitrate": 200.0,
+            "jitter": False,
+            "results": [0.01, 0.02, 0.03],
+            "status_delta": {
+                "statistics": {
+                    error_key_0: 7,
+                    error_key_1: 3,
+                }
+            },
+        }
+    ]
+    with patch("pathlib.Path.open", mock_open(read_data=json.dumps(mock_data))):
+        result = visualize_results.load_and_process_data(Path("test.json"))
+        assert result is not None
+        _, _, _, _, _, error_counters = result
+        counters = error_counters[0]
+        # Verify all STATUS_ERROR_KEYS are present
+        for key in STATUS_ERROR_KEYS:
+            assert key in counters
+        # Verify the specific values
+        assert counters[error_key_0] == 7
+        assert counters[error_key_1] == 3
+        # Verify remaining keys default to 0
+        for key in STATUS_ERROR_KEYS:
+            if key not in (error_key_0, error_key_1):
+                assert counters[key] == 0

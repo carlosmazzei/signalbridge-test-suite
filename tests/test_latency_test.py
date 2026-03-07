@@ -18,6 +18,8 @@ from base_test import (
     HEADER_BYTES,
 )
 from latency_test import (
+    DEFAULT_MIN_WAIT,
+    DEFAULT_NUM_TIMES,
     LatencyTest,
 )
 from serial_interface import SerialCommand, SerialInterface
@@ -373,3 +375,167 @@ def test_main_test_with_jitter_path() -> None:
             jitter=True,
             length=6,
         )
+
+
+# ---------------------------------------------------------------------------
+# Mutation-testing coverage improvements
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultMinWaitMs:
+    """Direct tests for LatencyTest._default_min_wait_ms."""
+
+    def test_ser_is_none(self) -> None:
+        """When ser is None the method returns DEFAULT_MIN_WAIT * 1000."""
+        tester = LatencyTest(ser=None)  # type: ignore[arg-type]
+        result = tester._default_min_wait_ms()
+        assert result == DEFAULT_MIN_WAIT * 1000
+
+    def test_baudrate_zero(self) -> None:
+        """A baudrate of 0 should fall back to DEFAULT_MIN_WAIT * 1000."""
+        mock_ser = Mock(spec=SerialInterface)
+        mock_ser.baudrate = 0
+        tester = LatencyTest(mock_ser)
+        result = tester._default_min_wait_ms()
+        assert result == DEFAULT_MIN_WAIT * 1000
+
+    def test_baudrate_negative(self) -> None:
+        """A negative baudrate should fall back to DEFAULT_MIN_WAIT * 1000."""
+        mock_ser = Mock(spec=SerialInterface)
+        mock_ser.baudrate = -1
+        tester = LatencyTest(mock_ser)
+        result = tester._default_min_wait_ms()
+        assert result == DEFAULT_MIN_WAIT * 1000
+
+    def test_valid_baudrate(self) -> None:
+        """A valid baudrate produces the correct baud-derived wait time."""
+        mock_ser = Mock(spec=SerialInterface)
+        mock_ser.baudrate = 115200
+        tester = LatencyTest(mock_ser)
+        message_length = 10
+        expected = ((message_length + 4) * 10 / 115200) * 1000
+        result = tester._default_min_wait_ms(message_length=message_length)
+        assert result == pytest.approx(expected)
+
+
+class TestShowOptionsBoundary:
+    """Boundary-value tests for LatencyTest._show_options."""
+
+    def test_num_times_zero_uses_default(self) -> None:
+        """num_times of 0 is invalid and should be replaced by DEFAULT_NUM_TIMES."""
+        tester = LatencyTest(Mock(spec=SerialInterface))
+        with patch.object(
+            LatencyTest,
+            "_get_user_input",
+            side_effect=[0, DEFAULT_MESSAGE_LENGTH, 100, 200, 10, 1, True],
+        ):
+            result = tester._show_options()
+        assert result[0] == DEFAULT_NUM_TIMES
+
+    def test_message_length_exactly_10_is_valid(self) -> None:
+        """Message length of 10 (upper bound) should stay as 10."""
+        tester = LatencyTest(Mock(spec=SerialInterface))
+        with patch.object(
+            LatencyTest,
+            "_get_user_input",
+            side_effect=[2, 10, 100, 200, 10, 1, True],
+        ):
+            result = tester._show_options()
+        # message_length is the last element in the returned tuple
+        assert result[6] == 10
+
+    def test_message_length_exactly_6_is_valid(self) -> None:
+        """Message length of 6 (lower bound) should stay as 6."""
+        tester = LatencyTest(Mock(spec=SerialInterface))
+        with patch.object(
+            LatencyTest,
+            "_get_user_input",
+            side_effect=[2, 6, 100, 200, 10, 1, True],
+        ):
+            result = tester._show_options()
+        assert result[6] == 6
+
+    def test_message_length_5_uses_default(self) -> None:
+        """Message length of 5 (below lower bound) should be replaced by default."""
+        tester = LatencyTest(Mock(spec=SerialInterface))
+        with patch.object(
+            LatencyTest,
+            "_get_user_input",
+            side_effect=[2, 5, 100, 200, 10, 1, True],
+        ):
+            result = tester._show_options()
+        assert result[6] == DEFAULT_MESSAGE_LENGTH
+
+    def test_message_length_11_uses_default(self) -> None:
+        """Message length of 11 (above upper bound) should be replaced by default."""
+        tester = LatencyTest(Mock(spec=SerialInterface))
+        with patch.object(
+            LatencyTest,
+            "_get_user_input",
+            side_effect=[2, 11, 100, 200, 10, 1, True],
+        ):
+            result = tester._show_options()
+        assert result[6] == DEFAULT_MESSAGE_LENGTH
+
+
+def test_execute_test_keyboard_interrupt() -> None:
+    """execute_test catches KeyboardInterrupt without propagating."""
+    mock_ser = Mock(spec=SerialInterface)
+    tester = LatencyTest(mock_ser)
+
+    with patch.object(LatencyTest, "_show_options", side_effect=KeyboardInterrupt):
+        # Should not raise
+        tester.execute_test()
+
+
+def test_main_test_nonzero_wait_values() -> None:
+    """main_test with non-zero min/max wait exercises the interpolation formula."""
+    mock_ser = Mock(spec=SerialInterface)
+    mock_ser.baudrate = 115200
+    tester = LatencyTest(mock_ser)
+
+    class DummyBar:
+        def __init__(self, *_: Any, **__: Any) -> None: ...
+        def __enter__(self) -> Any:
+            return lambda: None
+
+        def __exit__(self, *_: object) -> None:
+            return None
+
+    t = {"v": 0.0}
+
+    def fake_perf_counter() -> float:
+        t["v"] += 0.01
+        return t["v"]
+
+    captured: dict[str, Any] = {}
+
+    def fake_write(file_path: Path, output_data: list[dict[str, Any]]) -> None:
+        captured["data"] = output_data
+
+    with (
+        patch("latency_test.alive_bar", DummyBar),
+        patch("latency_test.time.sleep", lambda _x: None),
+        patch("latency_test.time.perf_counter", side_effect=fake_perf_counter),
+        patch("base_test.time.perf_counter", side_effect=fake_perf_counter),
+        patch("base_test.time.sleep", lambda _x: None),
+        patch.object(LatencyTest, "_write_output_to_file", side_effect=fake_write),
+    ):
+        tester.main_test(
+            num_times=2,
+            samples=2,
+            min_wait=0.01,
+            max_wait=0.05,
+            wait_time=0.0,
+            jitter=False,
+            length=6,
+        )
+
+    assert "data" in captured
+    out = captured["data"]
+    assert len(out) == 2
+    # The two test runs should have different waiting_time values
+    # due to the interpolation formula: min_wait + (max_wait - min_wait) * (j / (num_times - 1))
+    wait_0 = out[0]["waiting_time"]
+    wait_1 = out[1]["waiting_time"]
+    assert wait_0 != pytest.approx(wait_1, abs=1e-9)

@@ -153,3 +153,118 @@ class TestExecuteTest:
         with patch.object(regression_test, "test_echo_command") as mock_echo:
             regression_test.execute_test()
         mock_echo.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# handle_message — IndexError branch (mutation testing)
+# ---------------------------------------------------------------------------
+class TestHandleMessageIndexError:
+    """Tests to exercise the IndexError exception handler in handle_message."""
+
+    def test_index_error_is_caught_and_logged(
+        self, regression_test: RegressionTest
+    ) -> None:
+        """Force an IndexError inside the try block and verify logger.exception is called."""
+        with patch("regression_test.logger") as mock_log:
+            # Make logger.info raise IndexError to exercise the except branch
+            mock_log.info.side_effect = IndexError("forced index error")
+            regression_test.handle_message(
+                SerialCommand.ECHO_COMMAND.value,
+                bytes([0x00, 0x34, 0x02, 0x01, 0x02]),
+                b"raw",
+            )
+        mock_log.exception.assert_called_once_with("Invalid message (Index Error)")
+
+    def test_index_error_handler_returns_early(
+        self, regression_test: RegressionTest
+    ) -> None:
+        """When IndexError is caught the handler should return without propagating."""
+        with patch("regression_test.logger") as mock_log:
+            mock_log.info.side_effect = IndexError("forced")
+            # Must not raise — the except block catches and returns
+            regression_test.handle_message(
+                SerialCommand.ECHO_COMMAND.value,
+                b"\x00",
+                b"raw",
+            )
+        mock_log.exception.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# handle_message — exact logger format strings (mutation testing)
+# ---------------------------------------------------------------------------
+class TestHandleMessageLogContent:
+    """Verify exact logged message content including hex values."""
+
+    EXPECTED_ECHO = bytes([0x00, 0x34, 0x02, 0x01, 0x02])
+
+    def test_logged_messages_contain_expected_and_received_with_hex(
+        self, regression_test: RegressionTest
+    ) -> None:
+        """Logged messages must contain 'Expected:' and 'Received:' with actual hex data."""
+        logged: list[str] = []
+        with patch("regression_test.logger") as mock_log:
+            mock_log.info.side_effect = lambda msg, *args: logged.append(
+                msg % args if args else msg
+            )
+            regression_test.handle_message(
+                SerialCommand.ECHO_COMMAND.value,
+                self.EXPECTED_ECHO,
+                b"raw_bytes",
+            )
+        combined = "\n".join(logged)
+        # Verify "Expected:" line contains the exact expected bytes repr
+        assert "Expected:" in combined
+        assert repr(self.EXPECTED_ECHO) in combined
+        # Verify "Received:" line contains the actual data repr
+        assert "Received:" in combined
+        assert repr(b"raw_bytes") in combined
+
+    def test_fail_path_logs_expected_and_received_hex(
+        self, regression_test: RegressionTest
+    ) -> None:
+        """Even on FAIL path, both Expected and Received hex values are logged."""
+        wrong_data = bytes([0xFF, 0xAB])
+        logged: list[str] = []
+        with patch("regression_test.logger") as mock_log:
+            mock_log.info.side_effect = lambda msg, *args: logged.append(
+                msg % args if args else msg
+            )
+            regression_test.handle_message(
+                SerialCommand.ECHO_COMMAND.value,
+                wrong_data,
+                b"\xde\xad",
+            )
+        combined = "\n".join(logged)
+        assert "[FAIL] Echo command" in combined
+        assert "Expected:" in combined
+        assert repr(self.EXPECTED_ECHO) in combined
+        assert "Received:" in combined
+        assert repr(b"\xde\xad") in combined
+        assert repr(wrong_data) in combined
+
+
+# ---------------------------------------------------------------------------
+# execute_test — verify test_echo_command is actually invoked (mutation testing)
+# ---------------------------------------------------------------------------
+class TestExecuteTestCallsEcho:
+    """Verify execute_test actually invokes test_echo_command."""
+
+    def test_execute_test_triggers_serial_write(
+        self, regression_test: RegressionTest, mock_serial: Mock
+    ) -> None:
+        """execute_test should cause ser.write to be called via test_echo_command."""
+        regression_test.execute_test()
+        mock_serial.write.assert_called_once_with(bytes([0x00, 0x34, 0x02, 0x01, 0x02]))
+
+    def test_execute_test_calls_test_echo_command_method(
+        self, regression_test: RegressionTest
+    ) -> None:
+        """execute_test must call self.test_echo_command (verified via spy)."""
+        with patch.object(
+            regression_test,
+            "test_echo_command",
+            wraps=regression_test.test_echo_command,
+        ) as spy:
+            regression_test.execute_test()
+        spy.assert_called_once()

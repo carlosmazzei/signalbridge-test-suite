@@ -801,3 +801,122 @@ def test_monitor_connection_triggers_disconnect(
     assert any(
         record.message == "Serial interface disconnected." for record in caplog.records
     )
+
+
+def test_disconnect_when_not_open(
+    app_manager: ApplicationManager, mock_serial: SerialInterface
+) -> None:
+    """disconnect_serial should NOT call close() when port is not open."""
+    ms = cast("Mock", mock_serial)
+    ms.is_open.return_value = False
+
+    app_manager.connected = True
+    app_manager.modules = {Mode.LATENCY: object(), Mode.VISUALIZE: object()}
+
+    app_manager.disconnect_serial()
+
+    ms.close.assert_not_called()
+    assert app_manager.connected is False
+    assert app_manager.mode == Mode.IDLE
+    # Serial-required modules should still be removed
+    assert Mode.LATENCY not in app_manager.modules
+    assert Mode.VISUALIZE in app_manager.modules
+
+
+def test_cleanup_with_alive_monitor_thread(
+    app_manager: ApplicationManager, mock_serial: SerialInterface
+) -> None:
+    """cleanup() should stop and join the monitor thread when it is alive."""
+    mock_thread = Mock()
+    mock_thread.is_alive.return_value = True
+    app_manager.monitor_thread = mock_thread
+
+    app_manager.cleanup()
+
+    assert app_manager.monitor_stop_event.is_set()
+    mock_thread.join.assert_called_once()
+
+
+def test_build_menu_table_connected_indicators(
+    app_manager: ApplicationManager,
+) -> None:
+    """When connected, menu should show 'Disconnect from device'."""
+    app_manager.connected = True
+    for cfg in app_manager.module_configs:
+        app_manager.modules[cfg.mode] = object()
+
+    table = app_manager._build_menu_table()
+
+    # Render the table to a string to inspect its content
+    from io import StringIO
+
+    from rich.console import Console
+
+    buf = StringIO()
+    temp_console = Console(file=buf, force_terminal=False, width=120)
+    temp_console.print(table)
+    rendered = buf.getvalue()
+
+    assert "Disconnect from device" in rendered
+    assert "Connect to device" not in rendered
+
+
+def test_build_menu_table_disconnected_indicators(
+    app_manager: ApplicationManager,
+) -> None:
+    """When disconnected, menu should show 'Connect to device' and '(requires connection)' for serial modules."""
+    app_manager.connected = False
+    # Only non-serial modules available
+    app_manager.modules = {Mode.VISUALIZE: object()}
+
+    table = app_manager._build_menu_table()
+
+    from io import StringIO
+
+    from rich.console import Console
+
+    buf = StringIO()
+    temp_console = Console(file=buf, force_terminal=False, width=120)
+    temp_console.print(table)
+    rendered = buf.getvalue()
+
+    assert "Connect to device" in rendered
+    assert "Disconnect from device" not in rendered
+    assert "(requires connection)" in rendered
+
+
+def test_monitor_connection_calls_display_menu(
+    app_manager: ApplicationManager,
+    mock_serial: SerialInterface,
+) -> None:
+    """Monitor thread triggers disconnect_serial when connection state changes."""
+    app_manager.connected = True
+    ms = cast("Mock", mock_serial)
+    # Port is no longer open - simulate disconnection
+    ms.is_open.return_value = False
+
+    with patch.object(app_manager, "disconnect_serial") as mock_disconnect:
+        app_manager.monitor_stop_event.clear()
+
+        # Run monitor in a thread, let it execute one iteration then stop
+        def run_monitor() -> None:
+            app_manager._monitor_connection()
+
+        t = threading.Thread(target=run_monitor, daemon=True)
+        t.start()
+        _time.sleep(0.15)
+        app_manager.monitor_stop_event.set()
+        t.join(timeout=2)
+
+    mock_disconnect.assert_called()
+
+
+def test_exit_key_is_max_module_key_plus_one(
+    app_manager: ApplicationManager,
+) -> None:
+    """Exit key should be computed as max(module keys) + 1."""
+    max_key = max(int(cfg.key) for cfg in app_manager.module_configs)
+    expected_exit_key = str(max_key + 1)
+    assert app_manager.exit_key == expected_exit_key
+    # With current config, keys are 1..7, so exit key should be "8"
+    assert app_manager.exit_key == "8"

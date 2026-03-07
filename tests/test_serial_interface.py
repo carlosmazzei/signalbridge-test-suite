@@ -9,6 +9,7 @@ from unittest.mock import Mock, patch
 import serial
 from cobs import cobs
 
+from checksum import calculate_checksum
 from serial_interface import SerialCommand, SerialInterface
 
 if TYPE_CHECKING:
@@ -276,3 +277,195 @@ def test_set_baudrate_failure() -> None:
 
     assert result is False
     assert si.baudrate == 921600
+
+
+class TestOpenSerialParams:
+    """Verify serial.Serial() constructor receives exact parameters."""
+
+    def test_open_passes_correct_serial_params(self) -> None:
+        """Test that open() passes correct params to serial.Serial()."""
+        si = make_interface()
+        ser_mock = Mock()
+        with patch(
+            "serial_interface.serial.Serial", return_value=ser_mock
+        ) as mock_ctor:
+            si.open()
+        mock_ctor.assert_called_once()
+        _, kwargs = mock_ctor.call_args
+        assert kwargs["port"] == "COM1"
+        assert kwargs["baudrate"] == 115200
+        assert kwargs["timeout"] == 0.1
+        assert kwargs["parity"] == serial.PARITY_NONE
+        assert kwargs["bytesize"] == serial.EIGHTBITS
+        assert kwargs["stopbits"] == serial.STOPBITS_ONE
+        assert kwargs["xonxoff"] is False
+        assert kwargs["rtscts"] is True
+
+
+class TestProcessMessages:
+    """Test _process_messages pulls from queue and processes."""
+
+    def test_process_messages_handles_queued_message(self) -> None:
+        """Put a COBS-encoded message in the queue and verify processing."""
+        si = make_interface()
+        called: dict[str, Any] = {}
+
+        def handler(command: int, decoded: bytes, raw: bytes) -> None:
+            called["cmd"] = command
+            called["decoded"] = decoded
+            called["raw"] = raw
+            si.stop_event.set()  # Stop after first message
+
+        si.set_message_handler(handler)
+
+        decoded = b"\xaa" + bytes([SerialCommand.ECHO_COMMAND.value]) + b"payload"
+        raw = cobs.encode(decoded)
+        si.message_queue.put(raw)
+
+        si._process_messages()
+
+        assert called["cmd"] == SerialCommand.ECHO_COMMAND.value
+        assert called["decoded"] == decoded
+        assert called["raw"] == raw
+
+
+class TestFlowControlBoundaries:
+    """Test _handle_received_data at exact watermark boundaries."""
+
+    def test_buffer_at_high_water_does_not_deassert_rts(self) -> None:
+        """
+        Buffer size == BUFFER_HIGH_WATER should NOT trigger RTS deassert.
+
+        The code uses '>' (strictly greater), so exactly at the watermark
+        should not deassert RTS.
+        """
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.rts = True
+        si.ser = ser_mock
+
+        # Pre-fill buffer to exactly BUFFER_HIGH_WATER
+        si.buffer = bytearray(b"X" * si.BUFFER_HIGH_WATER)
+        si._handle_received_data(b"\x00", max_message_size=2048)
+
+        # RTS should still be True (not deasserted) because == not >
+        assert ser_mock.rts is True
+
+    def test_buffer_at_low_water_does_not_assert_rts(self) -> None:
+        """
+        Buffer size == BUFFER_LOW_WATER should NOT trigger RTS assert.
+
+        The code uses '<' (strictly less), so exactly at the watermark
+        should not reassert RTS.
+        """
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.rts = False  # Start with RTS deasserted
+        si.ser = ser_mock
+
+        # Pre-fill buffer to exactly BUFFER_LOW_WATER
+        si.buffer = bytearray(b"X" * si.BUFFER_LOW_WATER)
+        si._handle_received_data(b"\x00", max_message_size=2048)
+
+        # RTS should remain False because == not <
+        assert ser_mock.rts is False
+
+
+class TestWriteEncoding:
+    """Verify write() produces correct COBS encoding with checksum and delimiter."""
+
+    def test_write_sends_cobs_encoded_with_checksum_and_delimiter(self) -> None:
+        """Call write() with known data and verify exact bytes on the wire."""
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.write.side_effect = len
+        si.ser = ser_mock
+
+        data = b"\x00" + bytes([SerialCommand.ECHO_COMMAND.value]) + b"abc"
+        si.write(data)
+
+        # Expected checksum: XOR of all bytes in data
+        expected_checksum = calculate_checksum(data)
+        payload_with_checksum = data + expected_checksum
+        expected_message = cobs.encode(payload_with_checksum) + b"\x00"
+
+        ser_mock.write.assert_called_once_with(expected_message)
+
+        # Verify the delimiter is at the end
+        actual_message = ser_mock.write.call_args[0][0]
+        assert actual_message[-1:] == b"\x00"
+
+    def test_write_checksum_byte_is_correct(self) -> None:
+        """Verify the checksum byte is the XOR of all data bytes."""
+        data = b"\x10\x14\x01\x02"
+        expected = 0x10 ^ 0x14 ^ 0x01 ^ 0x02
+        assert calculate_checksum(data) == bytes([expected])
+
+
+class TestFlush:
+    """Test flush() method."""
+
+    def test_flush_calls_ser_flush(self) -> None:
+        """Verify self.ser.flush() is called when self.ser exists."""
+        si = make_interface()
+        ser_mock = Mock()
+        si.ser = ser_mock
+        si.flush()
+        ser_mock.flush.assert_called_once()
+
+    def test_flush_no_crash_when_ser_is_none(self) -> None:
+        """Verify no crash when self.ser is None."""
+        si = make_interface()
+        si.ser = None
+        si.flush()  # Should not raise
+
+
+class TestReadDataExceptions:
+    """Test _read_data exception handling paths."""
+
+    def test_serial_exception_logs_and_sets_stop(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Mock self.ser.read to raise SerialException → verify it logs."""
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.in_waiting = 1
+        ser_mock.read.side_effect = serial.SerialException("port gone")
+        ser_mock.is_open = True
+        si.ser = ser_mock
+
+        with caplog.at_level(logging.ERROR):
+            logger = logging.getLogger("serial_interface")
+            logger.addHandler(caplog.handler)
+            si._read_data()
+            logger.removeHandler(caplog.handler)
+
+        assert "Serial port error" in caplog.text
+        assert si.stop_event.is_set()
+
+    def test_generic_exception_logs_and_sets_stop(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Mock self.ser.read to raise generic Exception → verify it logs."""
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.in_waiting = 1
+        ser_mock.read.side_effect = RuntimeError("boom")
+        ser_mock.is_open = True
+        si.ser = ser_mock
+
+        with caplog.at_level(logging.ERROR):
+            logger = logging.getLogger("serial_interface")
+            logger.addHandler(caplog.handler)
+            si._read_data()
+            logger.removeHandler(caplog.handler)
+
+        assert "Unexpected error in read thread" in caplog.text
+        assert si.stop_event.is_set()
+
+
+def test_threads_are_daemon() -> None:
+    """Verify read_thread and processing_thread are daemon threads."""
+    si = make_interface()
+    assert si.read_thread.daemon is True
+    assert si.processing_thread.daemon is True
