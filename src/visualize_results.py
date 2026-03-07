@@ -50,8 +50,8 @@ class VisualizeResults:
             self._display_page(page_files, current_page, len(files), page_size)
 
             choice = console.input(
-            "\n[bold]Enter your choice[/bold] (number, n, p, or q): "
-        ).lower()
+                "\n[bold]Enter your choice[/bold] (number, n, p, or q): "
+            ).lower()
             result = self._handle_choice(
                 choice, page_files, current_page, files, page_size
             )
