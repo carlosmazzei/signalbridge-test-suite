@@ -246,6 +246,10 @@ class ApplicationManager:
                 self.mode = mode
                 cfg = self.module_configs_by_mode[mode]
                 cfg.runner(module)
+                # Restore the central message handler in case the module
+                # replaced it (e.g. after a baud-rate change).
+                if self.serial_interface.is_open():
+                    self.serial_interface.set_message_handler(self.handle_message)
             else:
                 logger.info(
                     "%s mode is not available. Serial interface is not connected.",
