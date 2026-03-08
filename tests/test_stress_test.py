@@ -444,13 +444,11 @@ class TestStressTestInit:
             assert actual.name == exp.name
             assert actual.command_profile == exp.command_profile
 
-    def test_run_id_is_valid_uuid(self, mock_serial: Mock) -> None:
-        import uuid
+    def test_run_id_is_valid_hex(self, mock_serial: Mock) -> None:
+        import re
 
         tester = StressTest(mock_serial)
-        # No exception means valid UUID
-        parsed = uuid.UUID(tester._run_id)
-        assert str(parsed) == tester._run_id
+        assert re.fullmatch(r"[0-9a-f]{8}", tester._run_id)
 
     def test_scenario_results_starts_empty(self, mock_serial: Mock) -> None:
         tester = StressTest(mock_serial)

@@ -20,6 +20,7 @@ from base_test import (
     TASK_ITEMS,
     BaseTest,
 )
+from result_format import FORMAT_LATENCY_SERIES
 from serial_interface import SerialCommand, SerialInterface
 
 
@@ -74,6 +75,18 @@ class TestBaseTestInit:
     def test_task_updated_at_initialized_to_zero(self, base_test: BaseTest) -> None:
         """All task timestamps should start at 0.0."""
         assert all(v == 0.0 for v in base_test._task_updated_at.values())
+
+    def test_run_id_is_8_hex_chars(self, base_test: BaseTest) -> None:
+        """_run_id must be an 8-character lowercase hex string."""
+        import re
+
+        assert re.fullmatch(r"[0-9a-f]{8}", base_test._run_id)
+
+    def test_run_id_unique_across_instances(self, mock_serial: Mock) -> None:
+        """Each BaseTest instance should get a distinct _run_id."""
+        a = BaseTest(mock_serial)
+        b = BaseTest(mock_serial)
+        assert a._run_id != b._run_id
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +364,9 @@ class TestWriteOutputToFile:
         handle = m()
         written = "".join(call.args[0] for call in handle.write.call_args_list)
         parsed = json.loads(written)
-        assert parsed == data
+        assert parsed["format_type"] == FORMAT_LATENCY_SERIES
+        assert parsed["format_version"] == 1
+        assert parsed["payload"] == data
 
     def test_oserror_is_caught(self, base_test: BaseTest) -> None:
         """OSError during file write should not propagate."""

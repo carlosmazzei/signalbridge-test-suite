@@ -12,6 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from const import TEST_RESULTS_FOLDER
+from result_format import FORMAT_STRESS_RUN, make_result_envelope, make_result_filename
 from ui_console import console
 
 if TYPE_CHECKING:
@@ -34,13 +35,17 @@ _VERDICT_ICON: dict[str, str] = {
 def write_json_report(
     result: StressRunResult, output_dir: str = TEST_RESULTS_FOLDER
 ) -> Path:
-    """Write <run_id>_stress.json to *output_dir* and return the path."""
+    """Write ``YYYYMMDD-HHMMSS-<run_id>-stress.json`` to *output_dir*."""
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{result.run_id}_stress.json"
+    out_path = out_dir / make_result_filename("stress", result.run_id)
     try:
         with out_path.open("w", encoding="utf-8") as f:
-            json.dump(result.to_dict(), f, indent=4)
+            json.dump(
+                make_result_envelope(FORMAT_STRESS_RUN, result.to_dict()),
+                f,
+                indent=4,
+            )
         logger.info("Stress report written to %s", out_path)
     except OSError:
         logger.exception("Failed to write stress report to %s", out_path)

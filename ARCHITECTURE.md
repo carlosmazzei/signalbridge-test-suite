@@ -98,6 +98,7 @@ Every test mode that communicates with the device **must** extend `BaseTest` (`s
 
 | Provided | Detail |
 |---|---|
+| `_run_id` | 8-character hex string (`uuid4().hex[:8]`) uniquely identifying this test instance; used in result filenames |
 | `publish(counter, length)` | Build and send an echo message; record send timestamp |
 | `handle_message(command, decoded_data)` | Dispatch on command ID: ECHO → latency, STATISTICS → `_statistics_values`, TASK_STATUS → `_task_values` |
 | `_calculate_test_results(...)` | Aggregate latency stats (avg/min/max/P95 via numpy) |
@@ -174,7 +175,7 @@ Add new commands to the `SerialCommand` enum only; do not hard-code integer lite
 
 ## 7. Output Format — JSON Test Results
 
-All test modes that produce results write a JSON array to `test_results/<timestamp>_output.json` using `BaseTest._write_output_to_file()`. Each element in the array represents one test iteration.
+All test modes that produce results write JSON to `test_results/YYYYMMDD-HHMMSS-<run_id>-<test_type>.json`. The filename is built by `make_result_filename()` in `result_format.py`, and `<run_id>` is an 8-character hex string generated once per `BaseTest` instance. Each latency/baud-sweep file contains a JSON array where each element represents one test iteration; stress files contain a single run-result object.
 
 ### Minimum required fields per iteration
 

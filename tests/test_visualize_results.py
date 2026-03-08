@@ -7,6 +7,11 @@ from unittest.mock import Mock, mock_open, patch
 import numpy as np
 import pytest
 
+from result_format import (
+    FORMAT_LATENCY_SERIES,
+    FORMAT_STRESS_RUN,
+    make_result_envelope,
+)
 from visualize_results import VisualizeResults
 
 
@@ -66,7 +71,7 @@ def test_select_test_file_with_files(visualize_results: VisualizeResults) -> Non
 
 def test_load_and_process_data_valid(visualize_results: VisualizeResults) -> None:
     """Test for the load_and_process_data method when valid data is found."""
-    mock_data = [
+    payload = [
         {
             "test": "test1",
             "waiting_time": 0.1,
@@ -81,6 +86,7 @@ def test_load_and_process_data_valid(visualize_results: VisualizeResults) -> Non
             "results": [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1],
         }
     ]
+    mock_data = make_result_envelope(FORMAT_LATENCY_SERIES, payload)
     with patch("pathlib.Path.open", mock_open(read_data=json.dumps(mock_data))):
         result = visualize_results.load_and_process_data(Path("test.json"))
         assert result is not None
@@ -980,17 +986,49 @@ def test_load_data_with_baudrate(visualize_results: VisualizeResults) -> None:
 def test_load_data_returns_dict_for_stress(
     visualize_results: VisualizeResults,
 ) -> None:
-    """Verify that JSON with 'scenarios' key returns the raw dict."""
-    stress_data = {
+    """Verify envelope with stress_run format returns the stress payload."""
+    stress_payload = {
         "scenarios": [{"name": "s1"}],
         "run_id": "abc",
         "overall_verdict": "PASS",
     }
+    stress_data = make_result_envelope(FORMAT_STRESS_RUN, stress_payload)
     with patch("pathlib.Path.open", mock_open(read_data=json.dumps(stress_data))):
         result = visualize_results.load_and_process_data(Path("test.json"))
         assert isinstance(result, dict)
         assert "scenarios" in result
         assert result["run_id"] == "abc"
+
+
+def test_load_data_legacy_stress_dict_fallback(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Legacy stress files without envelope should still be accepted."""
+    legacy_stress_data = {
+        "scenarios": [{"name": "s1"}],
+        "run_id": "legacy-1",
+        "overall_verdict": "PASS",
+    }
+    with patch(
+        "pathlib.Path.open", mock_open(read_data=json.dumps(legacy_stress_data))
+    ):
+        result = visualize_results.load_and_process_data(Path("test.json"))
+        assert isinstance(result, dict)
+        assert result["run_id"] == "legacy-1"
+
+
+def test_load_data_unknown_envelope_format_returns_none(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Unsupported format_type in envelope should fail parsing safely."""
+    unknown = {
+        "format_type": "mystery",
+        "format_version": 1,
+        "payload": {"anything": True},
+    }
+    with patch("pathlib.Path.open", mock_open(read_data=json.dumps(unknown))):
+        result = visualize_results.load_and_process_data(Path("test.json"))
+        assert result is None
 
 
 def test_load_data_empty_results_raises(

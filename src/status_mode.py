@@ -47,9 +47,9 @@ class TaskItem:
 
     name: str
     index: int = 0
-    absoulute_time = 0
-    percent_time = 0
-    high_watermark = 0
+    absolute_time: int = 0
+    percent_time: int = 0
+    high_watermark: int = 0
     last_updated: float = 0
 
 
@@ -118,7 +118,7 @@ class StatusMode:
 
                 if status_index in self.task_items:
                     task_item = self.task_items[status_index]
-                    task_item.absoulute_time = abs_time
+                    task_item.absolute_time = abs_time
                     task_item.percent_time = perc_time
                     task_item.high_watermark = h_watermark
                     task_item.last_updated = time.time()
@@ -241,7 +241,7 @@ class StatusMode:
         task_table.add_column("Last Updated", style="dim")
 
         for item in self.task_items.values():
-            formatted_time = self.format_time_from_microseconds(item.absoulute_time)
+            formatted_time = self.format_time_from_microseconds(item.absolute_time)
             task_table.add_row(
                 item.name,
                 formatted_time,
@@ -255,8 +255,8 @@ class StatusMode:
         cdc_idx = _TASK_INDEX_BY_NAME["cdc_task"]
         uart_idx = _TASK_INDEX_BY_NAME["uart_event_task"]
         core0_total_time = (
-            self.task_items[cdc_idx].absoulute_time
-            + self.task_items[uart_idx].absoulute_time
+            self.task_items[cdc_idx].absolute_time
+            + self.task_items[uart_idx].absolute_time
         )
 
         idle_idx = _TASK_INDEX_BY_NAME["idle_task"]
@@ -266,12 +266,12 @@ class StatusMode:
         process_idx = _TASK_INDEX_BY_NAME["process_outbound_task"]
         decode_idx = _TASK_INDEX_BY_NAME["decode_reception_task"]
         core1_total_time = (
-            self.task_items[idle_idx].absoulute_time
-            + self.task_items[encoder_idx].absoulute_time
-            + self.task_items[adc_idx].absoulute_time
-            + self.task_items[keypad_idx].absoulute_time
-            + self.task_items[process_idx].absoulute_time
-            + self.task_items[decode_idx].absoulute_time
+            self.task_items[idle_idx].absolute_time
+            + self.task_items[encoder_idx].absolute_time
+            + self.task_items[adc_idx].absolute_time
+            + self.task_items[keypad_idx].absolute_time
+            + self.task_items[process_idx].absolute_time
+            + self.task_items[decode_idx].absolute_time
         )
 
         summary = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))

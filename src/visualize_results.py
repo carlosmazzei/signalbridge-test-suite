@@ -4,7 +4,7 @@ import json
 import logging
 from math import ceil
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, NoReturn
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,6 +16,11 @@ from rich.table import Table
 from base_test import STATISTICS_DISPLAY_NAMES, STATUS_ERROR_KEYS
 from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
+from result_format import (
+    FORMAT_LATENCY_SERIES,
+    FORMAT_STRESS_RUN,
+    parse_result_envelope,
+)
 from ui_console import console
 
 # setup_logging() removed to prevent side effects on import
@@ -149,71 +154,108 @@ class VisualizeResults:
         try:
             with file_path.open() as f:
                 data = json.load(f)
+            normalized_data = self._normalize_loaded_data(data)
+            if isinstance(normalized_data, dict):
+                return normalized_data
 
-            if not isinstance(data, list):
-                if isinstance(data, dict) and "scenarios" in data:
-                    return data
-                msg = "The JSON data should be a list of test series."
-                raise ValueError(msg)  # noqa: TRY301  # ValueError is appropriate; no abstracting raise
-
-            labels = []
-            test_data = []
-            stats_data = []
-            error_counters = []
-            samples = 0
-            jitter = False
-
-            for series in data:
-                series_data = np.array(series["results"]) * 1000
-                waiting_time = format(series["waiting_time"] * 1000, ".0f")
-                bitrate = format(series["bitrate"], ".0f")
-                jitter = series.get("jitter", False)
-                if "baudrate" in series:
-                    series_name = (
-                        f"t: {series['test']}\nbaud:\n{series['baudrate']}"
-                        f"\nbitrate: {bitrate}"
-                    )
-                else:
-                    series_name = (
-                        f"t: {series['test']}\nw.time:\n{waiting_time}"
-                        f"\nbitrate: {bitrate}"
-                    )
-                samples += series["samples"]
-                labels.append(series_name)
-                test_data.append(series_data)
-
-                stats_data.append(
-                    {
-                        "avg": series["latency_avg"] * 1000,
-                        "min": series["latency_min"] * 1000,
-                        "max": series["latency_max"] * 1000,
-                        "p95": series["latency_p95"] * 1000,
-                        "bitrate": series["bitrate"],
-                        "dropped_messages": series["dropped_messages"],
-                        "outstanding_final": series.get("outstanding_final", 0),
-                        "outstanding_max": series.get("outstanding_max", 0),
-                        "status_error_delta_total": self._status_error_delta_total(
-                            series
-                        ),
-                    },
-                )
-
-                # Extract individual error counters
-                status_delta = series.get("status_delta", {})
-                statistics = status_delta.get("statistics", {})
-                error_counters.append(
-                    {key: int(statistics.get(key, 0)) for key in STATUS_ERROR_KEYS}
-                )
-
-            if not test_data:
-                msg = "No valid data to visualize."
-                raise ValueError(msg)  # noqa: TRY301  # No abstracting raise needed
+            return self._process_latency_series_data(normalized_data)
 
         except (OSError, KeyError, TypeError, ValueError):  # fmt: skip
             logger.exception("Error processing file %s", file_path)
             return None
-        else:
-            return labels, test_data, stats_data, samples, jitter, error_counters
+
+    def _normalize_loaded_data(self, data: object) -> dict | list[dict[str, object]]:
+        """Normalize JSON data from envelope or legacy shapes."""
+        envelope = parse_result_envelope(data)
+        if envelope is not None:
+            format_type, payload = envelope
+            if format_type == FORMAT_STRESS_RUN:
+                if isinstance(payload, dict):
+                    return payload
+                self._raise_invalid_data(
+                    "Invalid stress_run payload in result envelope."
+                )
+            if format_type == FORMAT_LATENCY_SERIES:
+                if isinstance(payload, list):
+                    return payload
+                self._raise_invalid_data(
+                    "Invalid latency_series payload in result envelope."
+                )
+            self._raise_invalid_data(f"Unsupported result format_type: {format_type}")
+
+        if isinstance(data, dict) and "scenarios" in data:
+            return data
+        if isinstance(data, list):
+            return data
+
+        self._raise_invalid_data("The JSON data should be a list of test series.")
+        msg = "Unreachable"
+        raise AssertionError(msg)
+
+    def _process_latency_series_data(
+        self, data: list[dict[str, object]]
+    ) -> tuple[
+        list[str],
+        list[np.ndarray],
+        list[dict[str, float]],
+        int,
+        bool,
+        list[dict[str, int]],
+    ]:
+        """Convert latency series payload into plotting structures."""
+        labels = []
+        test_data = []
+        stats_data = []
+        error_counters = []
+        samples = 0
+        jitter = False
+
+        for series in data:
+            series_data = np.array(series["results"]) * 1000
+            waiting_time = format(series["waiting_time"] * 1000, ".0f")
+            bitrate = format(series["bitrate"], ".0f")
+            jitter = series.get("jitter", False)
+            if "baudrate" in series:
+                series_name = (
+                    f"t: {series['test']}\nbaud:\n{series['baudrate']}"
+                    f"\nbitrate: {bitrate}"
+                )
+            else:
+                series_name = (
+                    f"t: {series['test']}\nw.time:\n{waiting_time}\nbitrate: {bitrate}"
+                )
+            samples += series["samples"]
+            labels.append(series_name)
+            test_data.append(series_data)
+
+            stats_data.append(
+                {
+                    "avg": series["latency_avg"] * 1000,
+                    "min": series["latency_min"] * 1000,
+                    "max": series["latency_max"] * 1000,
+                    "p95": series["latency_p95"] * 1000,
+                    "bitrate": series["bitrate"],
+                    "dropped_messages": series["dropped_messages"],
+                    "outstanding_final": series.get("outstanding_final", 0),
+                    "outstanding_max": series.get("outstanding_max", 0),
+                    "status_error_delta_total": self._status_error_delta_total(series),
+                },
+            )
+
+            status_delta = series.get("status_delta", {})
+            statistics = status_delta.get("statistics", {})
+            error_counters.append(
+                {key: int(statistics.get(key, 0)) for key in STATUS_ERROR_KEYS}
+            )
+
+        if not test_data:
+            self._raise_invalid_data("No valid data to visualize.")
+
+        return labels, test_data, stats_data, samples, jitter, error_counters
+
+    def _raise_invalid_data(self, message: str) -> NoReturn:
+        """Raise a consistent ValueError for invalid visualization input data."""
+        raise ValueError(message)
 
     def _status_error_delta_total(self, series: dict[str, object]) -> int:
         """Aggregate status delta error counters for one series."""
