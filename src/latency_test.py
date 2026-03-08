@@ -195,7 +195,7 @@ class LatencyTest(BaseTest):
 
         jitter = self._get_user_input(
             "(7/7) Run test with jitter? (True/False)",
-            default=False,
+            default_value=False,
         )
         if not isinstance(jitter, bool):
             jitter = False

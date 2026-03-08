@@ -138,7 +138,7 @@ class BaudRateTest(BaseTest):
         )
         use_default = self._get_user_input(
             "(1/4) Use default baud rates? (True/False)",
-            default=True,
+            default_value=True,
         )
 
         if use_default:
