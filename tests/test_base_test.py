@@ -76,6 +76,18 @@ class TestBaseTestInit:
         """All task timestamps should start at 0.0."""
         assert all(v == 0.0 for v in base_test._task_updated_at.values())
 
+    def test_run_id_is_8_hex_chars(self, base_test: BaseTest) -> None:
+        """_run_id must be an 8-character lowercase hex string."""
+        import re
+
+        assert re.fullmatch(r"[0-9a-f]{8}", base_test._run_id)
+
+    def test_run_id_unique_across_instances(self, mock_serial: Mock) -> None:
+        """Each BaseTest instance should get a distinct _run_id."""
+        a = BaseTest(mock_serial)
+        b = BaseTest(mock_serial)
+        assert a._run_id != b._run_id
+
 
 # ---------------------------------------------------------------------------
 # publish

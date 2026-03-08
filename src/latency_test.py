@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
 import logging
 import random
 import time
@@ -20,6 +19,7 @@ from base_test import (
 )
 from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
+from result_format import make_result_filename
 
 if TYPE_CHECKING:
     from serial_interface import SerialInterface
@@ -52,9 +52,7 @@ class LatencyTest(BaseTest):
         jitter: bool = False,
     ) -> None:
         """Execute the main test given the desired parameters."""
-        current_datetime = datetime.datetime.now(tz=datetime.UTC)
-        formatted_datetime = current_datetime.strftime("%Y%m%d-%H%M%S")
-        output_filename = f"{formatted_datetime}_latency.json"
+        output_filename = make_result_filename("latency", self._run_id)
         file_path = Path(__file__).parent.parent / TEST_RESULTS_FOLDER / output_filename
 
         output_data: list[dict[str, Any]] = []

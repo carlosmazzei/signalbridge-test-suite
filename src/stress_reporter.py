@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,7 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from const import TEST_RESULTS_FOLDER
-from result_format import FORMAT_STRESS_RUN, make_result_envelope
+from result_format import FORMAT_STRESS_RUN, make_result_envelope, make_result_filename
 from ui_console import console
 
 if TYPE_CHECKING:
@@ -36,11 +35,10 @@ _VERDICT_ICON: dict[str, str] = {
 def write_json_report(
     result: StressRunResult, output_dir: str = TEST_RESULTS_FOLDER
 ) -> Path:
-    """Write <YYYYMMDD-HHMMSS>-<run_id>_stress.json to *output_dir*."""
+    """Write ``YYYYMMDD-HHMMSS-<run_id>-stress.json`` to *output_dir*."""
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
-    out_path = out_dir / f"{timestamp}-{result.run_id}_stress.json"
+    out_path = out_dir / make_result_filename("stress", result.run_id)
     try:
         with out_path.open("w", encoding="utf-8") as f:
             json.dump(

@@ -6,6 +6,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -139,6 +140,7 @@ class BaseTest:
         """Initialize base test infrastructure."""
         self.logger = logger
         self.ser = ser
+        self._run_id: str = uuid.uuid4().hex[:8]
         self.latency_msg_sent: dict[int, float] = {}
         self.latency_msg_received: dict[int, float] = {}
         self._status_lock = threading.Lock()

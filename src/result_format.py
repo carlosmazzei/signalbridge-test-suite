@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from typing import Any
 
 RESULT_FORMAT_VERSION = 1
@@ -21,6 +22,12 @@ def make_result_envelope(
         "format_version": format_version,
         "payload": payload,
     }
+
+
+def make_result_filename(test_type: str, run_id: str) -> str:
+    """Return ``YYYYMMDD-HHMMSS-<run_id>-<type>.json``."""
+    timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d-%H%M%S")
+    return f"{timestamp}-{run_id}-{test_type}.json"
 
 
 def parse_result_envelope(data: Any) -> tuple[str, Any] | None:

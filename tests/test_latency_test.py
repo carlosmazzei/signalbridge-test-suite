@@ -318,7 +318,9 @@ def test_main_test_collects_and_writes_output() -> None:
 
     # Validate structure of written data
     assert "file_path" in captured
-    assert re.match(r"^\d{8}-\d{6}_latency\.json$", captured["file_path"].name)
+    assert re.match(
+        r"^\d{8}-\d{6}-[0-9a-f]{8}-latency\.json$", captured["file_path"].name
+    )
     assert "data" in captured
     out = captured["data"]
     assert isinstance(out, list)

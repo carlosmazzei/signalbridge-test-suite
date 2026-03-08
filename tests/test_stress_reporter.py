@@ -288,10 +288,10 @@ class TestWriteJsonReportExtra:
         assert out_path is not None
 
     def test_filename_has_stress_suffix(self, tmp_path: Path) -> None:
-        """The generated filename must end with '_stress.json'."""
+        """The generated filename must end with '-stress.json'."""
         result = _run_result()
         out_path = write_json_report(result, output_dir=str(tmp_path))
-        assert out_path.name.endswith("_stress.json")
+        assert out_path.name.endswith("-stress.json")
 
     def test_filename_has_timestamp_prefix(self, tmp_path: Path) -> None:
         """The generated filename must start with YYYYMMDD-HHMMSS."""

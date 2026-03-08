@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import random
 import time
-import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -74,7 +73,6 @@ class StressTest(BaseTest):
         super().__init__(ser)
         self.config: StressConfig = config or default_stress_config()
         self._scenario_results: list[ScenarioResult] = []
-        self._run_id: str = str(uuid.uuid4())
 
     # ------------------------------------------------------------------
     # Public interface (wired by ApplicationManager)
