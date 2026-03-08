@@ -110,11 +110,6 @@ class SerialInterface:
         """Close, change baud rate, reopen the port, and restart read threads."""
         self.close()
         self.baudrate = baudrate
-        # Python threads cannot be restarted; create new ones
-        self.read_thread = threading.Thread(target=self._read_data)
-        self.processing_thread = threading.Thread(target=self._process_messages)
-        self.read_thread.daemon = True
-        self.processing_thread.daemon = True
         self.buffer.clear()
         if not self.open():
             return False
@@ -165,6 +160,11 @@ class SerialInterface:
     def start_reading(self) -> None:
         """Start reading thread and processing thread."""
         self.stop_event.clear()
+        # Python threads cannot be restarted; create new ones
+        self.read_thread = threading.Thread(target=self._read_data)
+        self.processing_thread = threading.Thread(target=self._process_messages)
+        self.read_thread.daemon = True
+        self.processing_thread.daemon = True
         self.read_thread.start()
         self.processing_thread.start()
 
