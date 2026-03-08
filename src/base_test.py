@@ -62,8 +62,40 @@ TASK_ITEMS = {
     5: "adc_read_task",
     6: "keypad_task",
     7: "encoder_read_task",
-    8: "idle_task",
-    9: "led_status_task",
+    8: "led_status_task",
+    9: "idle_task",
+}
+
+# Index of the idle/system slot whose third field carries heap info, not a
+# stack high-watermark.
+IDLE_TASK_INDEX: int = 9
+
+# Core affinity for each task (0 or 1), matching include/app_config.h
+TASK_CORE_AFFINITY: dict[str, int] = {
+    "cdc_task": 0,
+    "cdc_write_task": 0,
+    "uart_event_task": 0,
+    "led_status_task": 0,
+    "decode_reception_task": 1,
+    "process_outbound_task": 1,
+    "adc_read_task": 1,
+    "keypad_task": 1,
+    "encoder_read_task": 1,
+    "idle_task": -1,  # not pinned to a core
+}
+
+# Stack allocation in bytes for each task, matching include/app_config.h
+TASK_STACK_BYTES: dict[str, int] = {
+    "cdc_task": 3072,
+    "cdc_write_task": 3072,
+    "uart_event_task": 3072,
+    "led_status_task": 2048,
+    "decode_reception_task": 3072,
+    "process_outbound_task": 3072,
+    "adc_read_task": 4096,
+    "keypad_task": 5120,
+    "encoder_read_task": 5120,
+    "idle_task": 0,  # idle task has no user-allocated stack
 }
 
 # Error status keys (excludes bytes_sent and bytes_received which are counters)
@@ -148,10 +180,13 @@ class BaseTest:
         self._statistics_updated_at: dict[int, float] = dict.fromkeys(
             STATISTICS_ITEMS, 0.0
         )
-        self._task_values = {
+        self._task_values: dict[int, dict[str, int]] = {
             idx: {"absolute_time_us": 0, "percent_time": 0, "high_watermark": 0}
             for idx in TASK_ITEMS
         }
+        # The idle/system slot (index 9) reports min-ever-free-heap instead of
+        # a stack watermark.  We track it in a dedicated field.
+        self._min_free_heap_bytes: int = 0
         self._task_updated_at = dict.fromkeys(TASK_ITEMS, 0.0)
 
     def publish(self, iteration_counter: int, message_length: int) -> None:
@@ -194,22 +229,28 @@ class BaseTest:
             except IndexError:
                 logger.info("Invalid statistics status message")
         elif command == SerialCommand.TASK_STATUS_COMMAND.value:
-            try:
-                status_index = decoded_data[3]
-                abs_time = int.from_bytes(decoded_data[4:8], byteorder="big")
-                perc_time = int.from_bytes(decoded_data[8:12], byteorder="big")
-                h_watermark = int.from_bytes(decoded_data[12:16], byteorder="big")
-                if status_index in self._task_values:
-                    now = time.perf_counter()
-                    with self._status_lock:
-                        self._task_values[status_index] = {
-                            "absolute_time_us": abs_time,
-                            "percent_time": perc_time,
-                            "high_watermark": h_watermark,
-                        }
-                        self._task_updated_at[status_index] = now
-            except IndexError:
-                logger.info("Invalid task status message")
+            self._handle_task_status(decoded_data)
+
+    def _handle_task_status(self, decoded_data: bytes) -> None:
+        """Parse and store a TASK_STATUS_COMMAND response."""
+        try:
+            status_index = decoded_data[3]
+            abs_time = int.from_bytes(decoded_data[4:8], byteorder="big")
+            perc_time = int.from_bytes(decoded_data[8:12], byteorder="big")
+            field3 = int.from_bytes(decoded_data[12:16], byteorder="big")
+            if status_index in self._task_values:
+                now = time.perf_counter()
+                with self._status_lock:
+                    self._task_values[status_index] = {
+                        "absolute_time_us": abs_time,
+                        "percent_time": perc_time,
+                        "high_watermark": field3,
+                    }
+                    self._task_updated_at[status_index] = now
+                    if status_index == IDLE_TASK_INDEX:
+                        self._min_free_heap_bytes = field3
+        except IndexError:
+            logger.info("Invalid task status message")
 
     def _calculate_test_results(
         self,
@@ -331,6 +372,7 @@ class BaseTest:
                 for idx, name in STATISTICS_ITEMS.items()
             }
             tasks = {name: self._task_values[idx] for idx, name in TASK_ITEMS.items()}
+            min_free_heap_bytes = self._min_free_heap_bytes
             stats_received = sum(
                 1
                 for idx in STATISTICS_ITEMS
@@ -342,6 +384,7 @@ class BaseTest:
         return {
             "statistics": statistics,
             "tasks": tasks,
+            "min_free_heap_bytes": min_free_heap_bytes,
             "received": {"statistics": stats_received, "tasks": tasks_received},
             "complete": (
                 stats_received == len(STATISTICS_ITEMS)

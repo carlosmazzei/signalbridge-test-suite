@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
 
 from base_test import STATISTICS_HEADER_BYTES
-from serial_interface import SerialCommand
+from serial_interface import SerialCommand, SerialInterface
 from status_mode import (
     _TASK_INDEX_BY_NAME,
     StatusMode,
@@ -303,8 +303,9 @@ def test_display_task_status_shows_computed_totals(
 
     # Assign known microsecond values to every task
     sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].absolute_time = 1_000_000
-    sm.task_items[_TASK_INDEX_BY_NAME["cdc_write_task"]].absolute_time = 500
+    sm.task_items[_TASK_INDEX_BY_NAME["cdc_write_task"]].absolute_time = 500_000
     sm.task_items[_TASK_INDEX_BY_NAME["uart_event_task"]].absolute_time = 2_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["led_status_task"]].absolute_time = 100_000
     sm.task_items[_TASK_INDEX_BY_NAME["idle_task"]].absolute_time = 3_000_000
     sm.task_items[_TASK_INDEX_BY_NAME["encoder_read_task"]].absolute_time = 4_000_000
     sm.task_items[_TASK_INDEX_BY_NAME["adc_read_task"]].absolute_time = 5_000_000
@@ -315,19 +316,23 @@ def test_display_task_status_shows_computed_totals(
     sm.task_items[
         _TASK_INDEX_BY_NAME["decode_reception_task"]
     ].absolute_time = 8_000_000
-    sm.task_items[_TASK_INDEX_BY_NAME["led_status_task"]].absolute_time = 100
+    sm.task_items[_TASK_INDEX_BY_NAME["idle_task"]].high_watermark = 23_400
 
     sm._display_task_status()
     out = capsys.readouterr().out
 
-    # Core 0 = cdc_task + uart_event_task = 1_000_000 + 2_000_000 = 3_000_000
-    # formatted as "3,000,000.000"
-    assert "3,000,000.000" in out
+    # Core 0 = cdc + cdc_write + uart + led = 1M + 0.5M + 2M + 0.1M = 3_600_000
+    # formatted as "3,600,000.000"
+    assert "3,600,000.000" in out
 
-    # Core 1 = idle + encoder + adc + keypad + process + decode
-    # = 3M + 4M + 5M + 6M + 7M + 8M = 33_000_000
-    # formatted as "33,000,000.000"
-    assert "33,000,000.000" in out
+    # Core 1 = decode + process + adc + keypad + encoder
+    # = 8M + 7M + 5M + 6M + 4M = 30_000_000
+    # formatted as "30,000,000.000"
+    assert "30,000,000.000" in out
+
+    # Heap info from idle_task slot should appear
+    assert "Min free heap" in out
+    assert "23,400 bytes" in out
 
 
 def test_execute_test_statistics_choice() -> None:
@@ -360,3 +365,103 @@ def test_update_statistics_status_sends_correct_header() -> None:
     for call in upd.call_args_list:
         args, _kwargs = call
         assert args[0] == STATISTICS_HEADER_BYTES
+
+
+# ---------------------------------------------------------------------------
+# Core label helper
+# ---------------------------------------------------------------------------
+
+
+class TestCoreLabel:
+    """Tests for the _core_label static helper."""
+
+    def test_core0_label(self) -> None:
+        """Core 0 should produce a bright_blue label."""
+        result = StatusMode._core_label(0)
+        assert "Core 0" in result
+
+    def test_core1_label(self) -> None:
+        """Core 1 should produce a bright_magenta label."""
+        result = StatusMode._core_label(1)
+        assert "Core 1" in result
+
+    def test_unpinned_label(self) -> None:
+        """Unpinned core (-1) should produce 'N/A'."""
+        result = StatusMode._core_label(-1)
+        assert "N/A" in result
+
+
+# ---------------------------------------------------------------------------
+# Task table column content
+# ---------------------------------------------------------------------------
+
+
+def test_display_task_status_shows_core_and_stack_columns(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify the task table includes Core and Stack columns."""
+    sm = make_status_mode()
+    sm._display_task_status()
+    out = capsys.readouterr().out
+    assert "Core" in out
+    assert "Stack (B)" in out
+
+
+def test_display_task_status_idle_heap_label(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Idle task row should display its watermark as heap info."""
+    sm = make_status_mode()
+    sm.task_items[_TASK_INDEX_BY_NAME["idle_task"]].high_watermark = 12_345
+    sm._display_task_status()
+    out = capsys.readouterr().out
+    # Rich strips the [cyan] markup; rendered text contains the value and label
+    assert "12,345" in out
+    assert "heap" in out
+
+
+# ---------------------------------------------------------------------------
+# Heap info in BaseTest
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_serial() -> Mock:
+    """Create a mocked SerialInterface for BaseTest tests."""
+    ser = Mock(spec=SerialInterface)
+    ser.baudrate = 115200
+    return ser
+
+
+def test_base_test_stores_min_free_heap() -> None:
+    """BaseTest should store min_free_heap_bytes when idle task index is received."""
+    from base_test import IDLE_TASK_INDEX, BaseTest
+
+    bt = BaseTest(_make_mock_serial())
+    heap_value = 23_400
+    data = (
+        bytes([0x00, 0x00, 0x00, IDLE_TASK_INDEX])
+        + (5_000_000).to_bytes(4, "big")
+        + (15).to_bytes(4, "big")
+        + heap_value.to_bytes(4, "big")
+    )
+    bt.handle_message(SerialCommand.TASK_STATUS_COMMAND.value, data)
+    assert bt._min_free_heap_bytes == heap_value
+
+
+def test_base_test_snapshot_includes_heap() -> None:
+    """Status snapshot should include min_free_heap_bytes."""
+    from base_test import BaseTest
+
+    bt = BaseTest(_make_mock_serial())
+    bt._min_free_heap_bytes = 42_000
+
+    with (
+        patch("base_test.time.sleep", return_value=None),
+        patch(
+            "base_test.time.perf_counter",
+            side_effect=[100.0, 100.0, 200.0, 200.0],
+        ),
+    ):
+        result = bt._request_status_snapshot(timeout_s=1.0)
+
+    assert result["min_free_heap_bytes"] == 42_000

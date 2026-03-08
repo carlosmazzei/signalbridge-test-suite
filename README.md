@@ -174,7 +174,7 @@ Polls and displays FreeRTOS statistics and task performance in Rich tables.
 
 **Statistics monitored:** queue send/receive errors, checksum errors, buffer overflows, unknown commands, bytes sent/received.
 
-**Tasks monitored:** `cdc_task`, `uart_event_task`, `idle_task`, `encoder_read_task`, `adc_read_task`, `keypad_task`, `process_outbound_task`, `decode_reception_task`.
+**Tasks monitored:** `cdc_task`, `cdc_write_task`, `uart_event_task`, `led_status_task`, `decode_reception_task`, `process_outbound_task`, `adc_read_task`, `keypad_task`, `encoder_read_task`, `idle_task` (system/heap info).
 
 ### 7. Visualize Test Results
 

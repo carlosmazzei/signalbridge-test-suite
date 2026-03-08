@@ -235,7 +235,7 @@ class StressTest(BaseTest):
                     idx = i % items_len if items_len > 0 else 0
                     self._status_update(STATISTICS_HEADER_BYTES, idx)
                 else:
-                    idx = i % 10
+                    idx = i % len(TASK_ITEMS)
                     self._status_update(TASK_HEADER_BYTES, idx)
                 gap = max(cfg.pacing_s, _MIN_GAP_S)
                 time.sleep(gap)
