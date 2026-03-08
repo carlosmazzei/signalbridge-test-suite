@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, patch
@@ -22,6 +23,7 @@ from latency_test import (
     DEFAULT_NUM_TIMES,
     LatencyTest,
 )
+from result_format import FORMAT_LATENCY_SERIES
 from serial_interface import SerialCommand, SerialInterface
 
 
@@ -136,7 +138,9 @@ def test_write_output_to_file_success(tmp_path: Path) -> None:
 
     assert output_file.exists()
     data = json.loads(output_file.read_text())
-    assert data == payload
+    assert data["format_type"] == FORMAT_LATENCY_SERIES
+    assert data["format_version"] == 1
+    assert data["payload"] == payload
 
 
 def test_write_output_to_file_oserror_logs(caplog: pytest.LogCaptureFixture) -> None:
@@ -291,6 +295,7 @@ def test_main_test_collects_and_writes_output() -> None:
     captured: dict[str, Any] = {}
 
     def fake_write(file_path: Path, output_data: list[dict[str, Any]]) -> None:
+        captured["file_path"] = file_path
         captured["data"] = output_data
 
     with (
@@ -312,6 +317,8 @@ def test_main_test_collects_and_writes_output() -> None:
         )
 
     # Validate structure of written data
+    assert "file_path" in captured
+    assert re.match(r"^\d{8}-\d{6}_latency\.json$", captured["file_path"].name)
     assert "data" in captured
     out = captured["data"]
     assert isinstance(out, list)

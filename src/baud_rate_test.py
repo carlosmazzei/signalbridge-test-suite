@@ -49,7 +49,7 @@ class BaudRateTest(BaseTest):
     ) -> None:
         """Sweep baud rates and run a latency burst at each rate."""
         current_datetime = datetime.datetime.now(tz=datetime.UTC)
-        formatted_datetime = current_datetime.strftime("%Y%m%d_%H%M%S")
+        formatted_datetime = current_datetime.strftime("%Y%m%d-%H%M%S")
         output_filename = f"{formatted_datetime}_baud_sweep.json"
         file_path = Path(__file__).parent.parent / TEST_RESULTS_FOLDER / output_filename
 

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 
+from result_format import FORMAT_STRESS_RUN
 from stress_evaluator import ScenarioResult, StressRunResult
 from stress_reporter import print_summary, write_json_report
 
@@ -74,6 +76,9 @@ class TestWriteJsonReport:
         out_path = write_json_report(result, output_dir=str(tmp_path))
         with out_path.open(encoding="utf-8") as f:
             data = json.load(f)
+        payload = data["payload"]
+        assert data["format_type"] == FORMAT_STRESS_RUN
+        assert data["format_version"] == 1
         for key in (
             "run_id",
             "port",
@@ -83,14 +88,14 @@ class TestWriteJsonReport:
             "started_at",
             "ended_at",
         ):
-            assert key in data, f"Missing key: {key}"
+            assert key in payload, f"Missing key: {key}"
 
     def test_scenario_has_required_keys(self, tmp_path: Path) -> None:
         result = _run_result()
         out_path = write_json_report(result, output_dir=str(tmp_path))
         with out_path.open(encoding="utf-8") as f:
             data = json.load(f)
-        scenario = data["scenarios"][0]
+        scenario = data["payload"]["scenarios"][0]
         for key in (
             "name",
             "verdict",
@@ -118,7 +123,7 @@ class TestWriteJsonReport:
         out_path = write_json_report(result, output_dir=str(tmp_path))
         with out_path.open(encoding="utf-8") as f:
             data = json.load(f)
-        assert data["overall_verdict"] == "FAIL"
+        assert data["payload"]["overall_verdict"] == "FAIL"
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +293,12 @@ class TestWriteJsonReportExtra:
         out_path = write_json_report(result, output_dir=str(tmp_path))
         assert out_path.name.endswith("_stress.json")
 
+    def test_filename_has_timestamp_prefix(self, tmp_path: Path) -> None:
+        """The generated filename must start with YYYYMMDD-HHMMSS."""
+        result = _run_result()
+        out_path = write_json_report(result, output_dir=str(tmp_path))
+        assert re.match(r"^\d{8}-\d{6}-", out_path.name)
+
     def test_json_output_is_indented(self, tmp_path: Path) -> None:
         """The JSON report must be pretty-printed with indent=4."""
         result = _run_result()
@@ -295,4 +306,4 @@ class TestWriteJsonReportExtra:
         raw = out_path.read_text(encoding="utf-8")
         # Pretty-printed JSON has newlines and leading spaces for nested keys
         assert "\n" in raw
-        assert '    "run_id"' in raw
+        assert '    "format_type"' in raw

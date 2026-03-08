@@ -20,6 +20,7 @@ from base_test import (
     TASK_ITEMS,
     BaseTest,
 )
+from result_format import FORMAT_LATENCY_SERIES
 from serial_interface import SerialCommand, SerialInterface
 
 
@@ -351,7 +352,9 @@ class TestWriteOutputToFile:
         handle = m()
         written = "".join(call.args[0] for call in handle.write.call_args_list)
         parsed = json.loads(written)
-        assert parsed == data
+        assert parsed["format_type"] == FORMAT_LATENCY_SERIES
+        assert parsed["format_version"] == 1
+        assert parsed["payload"] == data
 
     def test_oserror_is_caught(self, base_test: BaseTest) -> None:
         """OSError during file write should not propagate."""

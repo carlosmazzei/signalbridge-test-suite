@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from result_format import FORMAT_LATENCY_SERIES, make_result_envelope
 from serial_interface import SerialCommand, SerialInterface
 from ui_console import console
 
@@ -269,7 +270,11 @@ class BaseTest:
         """Write test output data to JSON file."""
         try:
             with file_path.open("w", encoding="utf-8") as output_file:
-                json.dump(output_data, output_file, indent=4)
+                json.dump(
+                    make_result_envelope(FORMAT_LATENCY_SERIES, output_data),
+                    output_file,
+                    indent=4,
+                )
                 logger.info("Test results written to %s", file_path)
         except OSError:
             logger.exception("Error writing to file.")

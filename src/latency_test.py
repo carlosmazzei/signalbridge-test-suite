@@ -53,7 +53,7 @@ class LatencyTest(BaseTest):
     ) -> None:
         """Execute the main test given the desired parameters."""
         current_datetime = datetime.datetime.now(tz=datetime.UTC)
-        formatted_datetime = current_datetime.strftime("%Y%m%d_%H%M%S")
+        formatted_datetime = current_datetime.strftime("%Y%m%d-%H%M%S")
         output_filename = f"{formatted_datetime}_latency.json"
         file_path = Path(__file__).parent.parent / TEST_RESULTS_FOLDER / output_filename
 
