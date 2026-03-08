@@ -78,7 +78,7 @@ def test_handle_message_updates_task_fields(caplog: pytest.LogCaptureFixture) ->
         logger.removeHandler(caplog.handler)
 
     t = sm.task_items[idx]
-    assert t.absoulute_time == abs_time
+    assert t.absolute_time == abs_time
     assert t.percent_time == perc_time
     assert t.high_watermark == hwm
     assert t.last_updated != 0
@@ -189,14 +189,14 @@ def test_display_task_status_outputs_table(capsys: pytest.CaptureFixture[str]) -
     """Test displaying task status outputs formatted table."""
     sm = make_status_mode()
     # Fill some task values
-    sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].absoulute_time = 10_000
-    sm.task_items[_TASK_INDEX_BY_NAME["uart_event_task"]].absoulute_time = 20_000
-    sm.task_items[_TASK_INDEX_BY_NAME["idle_task"]].absoulute_time = 30_000
-    sm.task_items[_TASK_INDEX_BY_NAME["encoder_read_task"]].absoulute_time = 40_000
-    sm.task_items[_TASK_INDEX_BY_NAME["adc_read_task"]].absoulute_time = 50_000
-    sm.task_items[_TASK_INDEX_BY_NAME["keypad_task"]].absoulute_time = 60_000
-    sm.task_items[_TASK_INDEX_BY_NAME["process_outbound_task"]].absoulute_time = 70_000
-    sm.task_items[_TASK_INDEX_BY_NAME["decode_reception_task"]].absoulute_time = 80_000
+    sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].absolute_time = 10_000
+    sm.task_items[_TASK_INDEX_BY_NAME["uart_event_task"]].absolute_time = 20_000
+    sm.task_items[_TASK_INDEX_BY_NAME["idle_task"]].absolute_time = 30_000
+    sm.task_items[_TASK_INDEX_BY_NAME["encoder_read_task"]].absolute_time = 40_000
+    sm.task_items[_TASK_INDEX_BY_NAME["adc_read_task"]].absolute_time = 50_000
+    sm.task_items[_TASK_INDEX_BY_NAME["keypad_task"]].absolute_time = 60_000
+    sm.task_items[_TASK_INDEX_BY_NAME["process_outbound_task"]].absolute_time = 70_000
+    sm.task_items[_TASK_INDEX_BY_NAME["decode_reception_task"]].absolute_time = 80_000
     sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].percent_time = 11
     sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].high_watermark = 99
 
@@ -273,7 +273,7 @@ def test_handle_message_unknown_index() -> None:
 
     # Snapshot originals
     orig_error_values = {k: v.value for k, v in sm.error_items.items()}
-    orig_task_abs = {k: v.absoulute_time for k, v in sm.task_items.items()}
+    orig_task_abs = {k: v.absolute_time for k, v in sm.task_items.items()}
 
     unknown_idx = 0xFF  # not in error_items or task_items
 
@@ -292,7 +292,7 @@ def test_handle_message_unknown_index() -> None:
     )
     sm.handle_message(SerialCommand.TASK_STATUS_COMMAND.value, task_payload)
 
-    assert {k: v.absoulute_time for k, v in sm.task_items.items()} == orig_task_abs
+    assert {k: v.absolute_time for k, v in sm.task_items.items()} == orig_task_abs
 
 
 def test_display_task_status_shows_computed_totals(
@@ -302,20 +302,20 @@ def test_display_task_status_shows_computed_totals(
     sm = make_status_mode()
 
     # Assign known microsecond values to every task
-    sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].absoulute_time = 1_000_000
-    sm.task_items[_TASK_INDEX_BY_NAME["cdc_write_task"]].absoulute_time = 500
-    sm.task_items[_TASK_INDEX_BY_NAME["uart_event_task"]].absoulute_time = 2_000_000
-    sm.task_items[_TASK_INDEX_BY_NAME["idle_task"]].absoulute_time = 3_000_000
-    sm.task_items[_TASK_INDEX_BY_NAME["encoder_read_task"]].absoulute_time = 4_000_000
-    sm.task_items[_TASK_INDEX_BY_NAME["adc_read_task"]].absoulute_time = 5_000_000
-    sm.task_items[_TASK_INDEX_BY_NAME["keypad_task"]].absoulute_time = 6_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].absolute_time = 1_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["cdc_write_task"]].absolute_time = 500
+    sm.task_items[_TASK_INDEX_BY_NAME["uart_event_task"]].absolute_time = 2_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["idle_task"]].absolute_time = 3_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["encoder_read_task"]].absolute_time = 4_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["adc_read_task"]].absolute_time = 5_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["keypad_task"]].absolute_time = 6_000_000
     sm.task_items[
         _TASK_INDEX_BY_NAME["process_outbound_task"]
-    ].absoulute_time = 7_000_000
+    ].absolute_time = 7_000_000
     sm.task_items[
         _TASK_INDEX_BY_NAME["decode_reception_task"]
-    ].absoulute_time = 8_000_000
-    sm.task_items[_TASK_INDEX_BY_NAME["led_status_task"]].absoulute_time = 100
+    ].absolute_time = 8_000_000
+    sm.task_items[_TASK_INDEX_BY_NAME["led_status_task"]].absolute_time = 100
 
     sm._display_task_status()
     out = capsys.readouterr().out
