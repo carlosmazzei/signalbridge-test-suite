@@ -40,6 +40,10 @@ class TestScenarioThresholdsDefaults:
         t = ScenarioThresholds()
         assert t.max_recovery_time_s == 2.0
 
+    def test_expected_counter_deltas_default(self) -> None:
+        t = ScenarioThresholds()
+        assert t.expected_counter_deltas == {}
+
 
 class TestScenarioConfigDefaults:
     def test_pacing_s_default(self) -> None:
@@ -61,6 +65,10 @@ class TestScenarioConfigDefaults:
     def test_noise_bytes_default(self) -> None:
         cfg = ScenarioConfig(name="x", duration_s=1.0, command_profile="echo_only")
         assert cfg.noise_bytes == 64
+
+    def test_fault_frames_default(self) -> None:
+        cfg = ScenarioConfig(name="x", duration_s=1.0, command_profile="echo_only")
+        assert cfg.fault_frames == []
 
     def test_thresholds_default(self) -> None:
         cfg = ScenarioConfig(name="x", duration_s=1.0, command_profile="echo_only")
@@ -89,7 +97,7 @@ class TestDefaultStressConfig:
 
     def test_scenario_count(self) -> None:
         cfg = default_stress_config()
-        assert len(cfg.scenarios) == 5
+        assert len(cfg.scenarios) == 13
 
     def test_output_dir(self) -> None:
         cfg = default_stress_config()
@@ -104,7 +112,39 @@ class TestDefaultStressConfig:
             "status_poll_storm",
             "baud_flip",
             "noise_and_recovery",
+            "fi_empty_frame",
+            "fi_too_short",
+            "fi_size_mismatch",
+            "fi_unknown_id",
+            "fi_bad_checksum",
+            "fi_payload_overflow",
+            "fi_single_overflow",
+            "fi_double_overflow_empty",
         ]
+
+    def test_fault_injection_scenarios_have_fault_frames(self) -> None:
+        cfg = default_stress_config()
+        fi_scenarios = [
+            s for s in cfg.scenarios if s.command_profile == "fault_injection"
+        ]
+        assert len(fi_scenarios) == 8
+        for s in fi_scenarios:
+            assert len(s.fault_frames) == 1, (
+                f"{s.name} should have exactly 1 fault frame"
+            )
+
+    def test_fi_empty_frame_expected_counter(self) -> None:
+        cfg = default_stress_config()
+        s = next(s for s in cfg.scenarios if s.name == "fi_empty_frame")
+        assert s.thresholds.expected_counter_deltas == {"cobs_decode_error": 1}
+
+    def test_fi_double_overflow_empty_expected_counters(self) -> None:
+        cfg = default_stress_config()
+        s = next(s for s in cfg.scenarios if s.name == "fi_double_overflow_empty")
+        assert s.thresholds.expected_counter_deltas == {
+            "receive_buffer_overflow_error": 2,
+            "cobs_decode_error": 1,
+        }
 
     # -- echo_burst --
     def test_echo_burst_duration(self) -> None:
