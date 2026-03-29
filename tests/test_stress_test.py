@@ -581,3 +581,102 @@ class TestStatisticsItemsProperty:
         tester = _make_tester(mock_serial)
         assert tester.STATISTICS_ITEMS == STATISTICS_ITEMS
         assert isinstance(tester.STATISTICS_ITEMS, dict)
+
+
+# ---------------------------------------------------------------------------
+# TestFaultInjection
+# ---------------------------------------------------------------------------
+
+
+class TestFaultInjection:
+    """Tests for the fault_injection command profile."""
+
+    def _make_fi_tester(
+        self,
+        mock_serial: Mock,
+        fault_frames: list[bytes],
+        pacing_s: float = 0.05,
+    ) -> StressTest:
+        cfg = StressConfig(
+            scenarios=[
+                ScenarioConfig(
+                    name="fi_test",
+                    duration_s=5.0,
+                    command_profile="fault_injection",
+                    pacing_s=pacing_s,
+                    num_messages=0,
+                    fault_frames=fault_frames,
+                    thresholds=ScenarioThresholds(
+                        max_echo_drop_ratio=1.0,
+                        expected_counter_deltas={"cobs_decode_error": 1},
+                    ),
+                )
+            ],
+        )
+        return _make_tester(mock_serial, cfg)
+
+    def test_raw_bytes_written_for_each_frame(self, mock_serial: Mock) -> None:
+        frames = [b"\x01\x00", b"\x01\x00"]
+        tester = self._make_fi_tester(mock_serial, frames)
+        with patch("stress_test.time.sleep"):
+            tester._run_fault_injection(tester.config.scenarios[0])
+        assert mock_serial.ser.write.call_count == 2
+
+    def test_status_snapshot_pre_and_post_per_frame(self, mock_serial: Mock) -> None:
+        frames = [b"\x01\x00", b"\x01\x00", b"\x01\x00"]
+        tester = self._make_fi_tester(mock_serial, frames)
+        with patch("stress_test.time.sleep"):
+            tester._run_fault_injection(tester.config.scenarios[0])
+        # pre + post for each of the 3 frames = 6 calls
+        assert tester._request_status_snapshot.call_count == 6
+
+    def test_total_delta_accumulates_across_frames(self, mock_serial: Mock) -> None:
+        frames = [b"\x01\x00", b"\x01\x00", b"\x01\x00"]
+        tester = self._make_fi_tester(mock_serial, frames)
+        tester._calculate_status_delta = Mock(
+            return_value={"statistics": {"cobs_decode_error": 1}, "tasks": {}}
+        )
+        with patch("stress_test.time.sleep"):
+            result = tester._run_fault_injection(tester.config.scenarios[0])
+        assert result.status_delta.get("cobs_decode_error") == 3
+
+    def test_returns_zero_messages_sent_and_received(self, mock_serial: Mock) -> None:
+        tester = self._make_fi_tester(mock_serial, [b"\x01\x00"])
+        with patch("stress_test.time.sleep"):
+            result = tester._run_fault_injection(tester.config.scenarios[0])
+        assert result.messages_sent == 0
+        assert result.messages_received == 0
+
+    def test_empty_fault_frames_no_writes(self, mock_serial: Mock) -> None:
+        tester = self._make_fi_tester(mock_serial, [])
+        with patch("stress_test.time.sleep"):
+            result = tester._run_fault_injection(tester.config.scenarios[0])
+        mock_serial.ser.write.assert_not_called()
+        assert result.status_delta == {}
+
+    def test_fault_injection_in_dispatch(self, mock_serial: Mock) -> None:
+        cfg = StressConfig(
+            scenarios=[
+                ScenarioConfig(
+                    name="fi_dispatch_test",
+                    duration_s=5.0,
+                    command_profile="fault_injection",
+                    num_messages=0,
+                    fault_frames=[],
+                )
+            ],
+        )
+        tester = _make_tester(mock_serial, cfg)
+        with patch("stress_test.time.sleep"):
+            result = tester._run_scenario(cfg.scenarios[0])
+        # Must not fall through to the unknown-profile path (messages_sent=0 != 0 is a
+        # coincidence here, so check command_profile instead)
+        assert result.command_profile == "fault_injection"
+
+    def test_serial_ser_none_returns_result(self, mock_serial: Mock) -> None:
+        from stress_evaluator import ScenarioResult
+
+        mock_serial.ser = None
+        tester = self._make_fi_tester(mock_serial, [b"\x01\x00"])
+        result = tester._run_fault_injection(tester.config.scenarios[0])
+        assert isinstance(result, ScenarioResult)

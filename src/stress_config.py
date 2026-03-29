@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import fault_frames as _ff
 from const import TEST_RESULTS_FOLDER
 
 DEFAULT_CONFIG_FILENAME = "stress_config.json"
@@ -25,6 +26,9 @@ class ScenarioThresholds:
     max_p95_latency_ms: float = 50.0
     # Maximum acceptable recovery time after a noise burst (seconds)
     max_recovery_time_s: float = 2.0
+    # Exact expected increment per error counter — used by fault_injection profile.
+    # An observed delta != expected causes FAIL.  Missing keys are not checked.
+    expected_counter_deltas: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -40,6 +44,9 @@ class ScenarioConfig:
     num_messages: int = 500
     baud_rates: list[int] = field(default_factory=list)  # used by baud_flip
     noise_bytes: int = 64  # used by noise_and_recovery
+    # Raw byte sequences injected directly for the fault_injection profile.
+    # Each element is fully constructed (COBS-encoded + 0x00 where applicable).
+    fault_frames: list[bytes] = field(default_factory=list)
     thresholds: ScenarioThresholds = field(default_factory=ScenarioThresholds)
     tags: list[str] = field(default_factory=list)
 
@@ -129,6 +136,116 @@ def default_stress_config() -> StressConfig:
                 ),
                 tags=["ci", "fault_injection"],
             ),
+            # ------------------------------------------------------------------
+            # Deterministic fault-injection scenarios (one error path each)
+            # ------------------------------------------------------------------
+            ScenarioConfig(
+                name="fi_empty_frame",
+                duration_s=5.0,
+                command_profile="fault_injection",
+                pacing_s=0.05,
+                num_messages=0,
+                fault_frames=[_ff.empty_frame()],
+                thresholds=ScenarioThresholds(
+                    max_echo_drop_ratio=1.0,
+                    expected_counter_deltas={"cobs_decode_error": 1},
+                ),
+                tags=["ci", "fault_injection"],
+            ),
+            ScenarioConfig(
+                name="fi_too_short",
+                duration_s=5.0,
+                command_profile="fault_injection",
+                pacing_s=0.05,
+                num_messages=0,
+                fault_frames=[_ff.too_short()],
+                thresholds=ScenarioThresholds(
+                    max_echo_drop_ratio=1.0,
+                    expected_counter_deltas={"msg_malformed_error": 1},
+                ),
+                tags=["ci", "fault_injection"],
+            ),
+            ScenarioConfig(
+                name="fi_size_mismatch",
+                duration_s=5.0,
+                command_profile="fault_injection",
+                pacing_s=0.05,
+                num_messages=0,
+                fault_frames=[_ff.size_mismatch()],
+                thresholds=ScenarioThresholds(
+                    max_echo_drop_ratio=1.0,
+                    expected_counter_deltas={"msg_malformed_error": 1},
+                ),
+                tags=["ci", "fault_injection"],
+            ),
+            ScenarioConfig(
+                name="fi_unknown_id",
+                duration_s=5.0,
+                command_profile="fault_injection",
+                pacing_s=0.05,
+                num_messages=0,
+                fault_frames=[_ff.unknown_id()],
+                thresholds=ScenarioThresholds(
+                    max_echo_drop_ratio=1.0,
+                    expected_counter_deltas={"unknown_cmd_error": 1},
+                ),
+                tags=["ci", "fault_injection"],
+            ),
+            ScenarioConfig(
+                name="fi_bad_checksum",
+                duration_s=5.0,
+                command_profile="fault_injection",
+                pacing_s=0.05,
+                num_messages=0,
+                fault_frames=[_ff.bad_checksum()],
+                thresholds=ScenarioThresholds(
+                    max_echo_drop_ratio=1.0,
+                    expected_counter_deltas={"checksum_error": 1},
+                ),
+                tags=["ci", "fault_injection"],
+            ),
+            ScenarioConfig(
+                name="fi_payload_overflow",
+                duration_s=5.0,
+                command_profile="fault_injection",
+                pacing_s=0.05,
+                num_messages=0,
+                fault_frames=[_ff.payload_overflow()],
+                thresholds=ScenarioThresholds(
+                    max_echo_drop_ratio=1.0,
+                    expected_counter_deltas={"buffer_overflow_error": 1},
+                ),
+                tags=["ci", "fault_injection"],
+            ),
+            ScenarioConfig(
+                name="fi_single_overflow",
+                duration_s=5.0,
+                command_profile="fault_injection",
+                pacing_s=0.05,
+                num_messages=0,
+                fault_frames=[_ff.single_overflow()],
+                thresholds=ScenarioThresholds(
+                    max_echo_drop_ratio=1.0,
+                    expected_counter_deltas={"receive_buffer_overflow_error": 1},
+                ),
+                tags=["ci", "fault_injection"],
+            ),
+            ScenarioConfig(
+                name="fi_double_overflow_empty",
+                duration_s=5.0,
+                command_profile="fault_injection",
+                pacing_s=0.05,
+                num_messages=0,
+                fault_frames=[_ff.double_overflow_empty()],
+                thresholds=ScenarioThresholds(
+                    max_echo_drop_ratio=1.0,
+                    expected_counter_deltas={
+                        "receive_buffer_overflow_error": 2,
+                        "cobs_decode_error": 1,
+                    },
+                ),
+                tags=["ci", "fault_injection"],
+            ),
         ],
     )
 
@@ -144,6 +261,7 @@ def _scenario_thresholds_from_dict(d: dict[str, Any]) -> ScenarioThresholds:
         max_error_counter_deltas=d.get("max_error_counter_deltas", {}),
         max_p95_latency_ms=d.get("max_p95_latency_ms", 50.0),
         max_recovery_time_s=d.get("max_recovery_time_s", 2.0),
+        expected_counter_deltas=d.get("expected_counter_deltas", {}),
     )
 
 
@@ -157,6 +275,7 @@ def _scenario_from_dict(d: dict[str, Any]) -> ScenarioConfig:
         num_messages=int(d.get("num_messages", 500)),
         baud_rates=d.get("baud_rates", []),
         noise_bytes=int(d.get("noise_bytes", 64)),
+        fault_frames=[],  # bytes not round-trippable via JSON; set programmatically
         thresholds=_scenario_thresholds_from_dict(d.get("thresholds", {})),
         tags=d.get("tags", []),
     )

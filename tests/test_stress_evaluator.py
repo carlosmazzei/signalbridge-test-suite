@@ -398,3 +398,127 @@ class TestDropFailReasonContent:
         # drop_ratio = 100/1000 = 0.1000
         drop_reason = next(r for r in reasons if "drop_ratio" in r)
         assert "0.1000" in drop_reason
+
+
+# ---------------------------------------------------------------------------
+# evaluate_verdict — expected_counter_deltas (fault_injection profile)
+# ---------------------------------------------------------------------------
+
+
+def _fi_cfg(
+    *,
+    expected: dict[str, int],
+    max_limits: dict[str, int] | None = None,
+) -> ScenarioConfig:
+    """Build a fault_injection ScenarioConfig for evaluator tests."""
+    return ScenarioConfig(
+        name="fi_test",
+        duration_s=5.0,
+        command_profile="fault_injection",
+        thresholds=ScenarioThresholds(
+            max_echo_drop_ratio=1.0,
+            max_error_counter_deltas=max_limits or {},
+            expected_counter_deltas=expected,
+        ),
+    )
+
+
+class TestExpectedCounterDeltas:
+    def test_exact_match_passes(self) -> None:
+        verdict, reasons = evaluate_verdict(
+            _fi_cfg(expected={"cobs_decode_error": 1}),
+            0,
+            0,
+            [],
+            {"cobs_decode_error": 1},
+        )
+        assert verdict == "PASS"
+        assert reasons == []
+
+    def test_delta_too_high_fails(self) -> None:
+        verdict, _ = evaluate_verdict(
+            _fi_cfg(expected={"cobs_decode_error": 1}),
+            0,
+            0,
+            [],
+            {"cobs_decode_error": 2},
+        )
+        assert verdict == "FAIL"
+
+    def test_delta_too_low_fails(self) -> None:
+        verdict, reasons = evaluate_verdict(
+            _fi_cfg(expected={"cobs_decode_error": 1}),
+            0,
+            0,
+            [],
+            {"cobs_decode_error": 0},
+        )
+        assert verdict == "FAIL"
+        assert any("cobs_decode_error" in r for r in reasons)
+
+    def test_missing_counter_defaults_to_zero(self) -> None:
+        # key absent in status_delta → treated as 0; expected=1 → FAIL
+        verdict, _ = evaluate_verdict(
+            _fi_cfg(expected={"cobs_decode_error": 1}),
+            0,
+            0,
+            [],
+            {},
+        )
+        assert verdict == "FAIL"
+
+    def test_multiple_counters_all_must_match(self) -> None:
+        # Both expected; one wrong → FAIL
+        verdict, reasons = evaluate_verdict(
+            _fi_cfg(
+                expected={
+                    "receive_buffer_overflow_error": 2,
+                    "cobs_decode_error": 1,
+                }
+            ),
+            0,
+            0,
+            [],
+            {"receive_buffer_overflow_error": 2, "cobs_decode_error": 0},
+        )
+        assert verdict == "FAIL"
+        assert any("cobs_decode_error" in r for r in reasons)
+
+    def test_expected_independent_of_max(self) -> None:
+        # max check passes (3 ≤ 5), exact check fails (3 ≠ 1) → FAIL
+        verdict, reasons = evaluate_verdict(
+            _fi_cfg(
+                expected={"cobs_decode_error": 1},
+                max_limits={"cobs_decode_error": 5},
+            ),
+            0,
+            0,
+            [],
+            {"cobs_decode_error": 3},
+        )
+        assert verdict == "FAIL"
+        assert any("expected exactly 1" in r for r in reasons)
+
+    def test_fault_injection_zero_messages_no_drop_fail(self) -> None:
+        # messages_sent=0, messages_received=0, drop_ratio guard → no FAIL
+        verdict, _ = evaluate_verdict(
+            _fi_cfg(expected={"cobs_decode_error": 1}),
+            0,
+            0,
+            [],
+            {"cobs_decode_error": 1},
+        )
+        assert verdict == "PASS"
+
+    def test_reason_contains_counter_name_and_values(self) -> None:
+        _, reasons = evaluate_verdict(
+            _fi_cfg(expected={"checksum_error": 1}),
+            0,
+            0,
+            [],
+            {"checksum_error": 2},
+        )
+        assert len(reasons) == 1
+        assert "checksum_error" in reasons[0]
+        assert "delta=2" in reasons[0]
+        assert "expected exactly 1" in reasons[0]

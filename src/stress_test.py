@@ -160,6 +160,7 @@ class StressTest(BaseTest):
             "status_poll": self._run_status_poll_storm,
             "baud_flip": self._run_baud_flip,
             "noise_and_recovery": self._run_noise_and_recovery,
+            "fault_injection": self._run_fault_injection,
         }
         runner = dispatch.get(cfg.command_profile)
         if runner is None:
@@ -401,6 +402,55 @@ class StressTest(BaseTest):
             latencies_ms=latencies_ms,
             status_delta=delta["statistics"],
             task_snapshot=post.get("tasks", {}),
+        )
+
+    def _run_fault_injection(self, cfg: ScenarioConfig) -> ScenarioResult:
+        """Inject each fault frame directly and accumulate exact counter deltas."""
+        started_at = datetime.now(UTC).isoformat()
+        total_delta: dict[str, int] = {}
+
+        if not (self.ser.ser and self.ser.ser.is_open):
+            logger.warning("Serial port not available for fault injection")
+            ended_at = datetime.now(UTC).isoformat()
+            return self._make_result(
+                cfg,
+                started_at=started_at,
+                ended_at=ended_at,
+                messages_sent=0,
+                messages_received=0,
+                latencies_ms=[],
+                status_delta=total_delta,
+                task_snapshot={},
+            )
+
+        with alive_bar(len(cfg.fault_frames), title=cfg.name) as pbar:
+            for idx, frame in enumerate(cfg.fault_frames):
+                pre = self._request_status_snapshot()
+                self.ser.ser.write(frame)
+                self.ser.ser.flush()
+                logger.info(
+                    "Fault frame %d/%d injected: %s",
+                    idx + 1,
+                    len(cfg.fault_frames),
+                    frame.hex(),
+                )
+                time.sleep(max(cfg.pacing_s, _MIN_GAP_S))
+                post = self._request_status_snapshot()
+                frame_delta = self._calculate_status_delta(pre, post)["statistics"]
+                for key, val in frame_delta.items():
+                    total_delta[key] = total_delta.get(key, 0) + val
+                pbar()
+
+        ended_at = datetime.now(UTC).isoformat()
+        return self._make_result(
+            cfg,
+            started_at=started_at,
+            ended_at=ended_at,
+            messages_sent=0,
+            messages_received=0,
+            latencies_ms=[],
+            status_delta=total_delta,
+            task_snapshot={},
         )
 
     # ------------------------------------------------------------------

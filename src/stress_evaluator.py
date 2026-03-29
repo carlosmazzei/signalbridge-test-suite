@@ -138,7 +138,7 @@ def evaluate_verdict(
     # --- Drop ratio check ---
     dropped = max(0, messages_sent - messages_received)
 
-    if cfg.command_profile == "noise_and_recovery":
+    if cfg.command_profile in {"noise_and_recovery", "fault_injection"}:
         # Noise corrupts the next valid message, causing a parsing error.
         # This inevitably drops the message, but it shouldn't fail the test
         # if the drop is accounted for by specific error counters.
@@ -163,6 +163,13 @@ def evaluate_verdict(
         delta = status_delta.get(key, 0)
         if delta > limit:
             reasons.append(f"counter '{key}' increased by {delta} (limit={limit})")
+            is_fail = True
+
+    # --- Exact counter delta check (fault_injection profile) ---
+    for key, expected in thresholds.expected_counter_deltas.items():
+        delta = status_delta.get(key, 0)
+        if delta != expected:
+            reasons.append(f"counter '{key}' delta={delta} expected exactly {expected}")
             is_fail = True
 
     # --- Latency P95 check (WARN only) ---
