@@ -100,10 +100,10 @@ class VisualizeResults:
             table.add_row(f"[{idx}]", file.name)
         table.add_section()
         if (current_page + 1) * page_size < total_files:
-            table.add_row("[n]", "Next page")
+            table.add_row("\\[n]", "Next page")
         if current_page > 0:
-            table.add_row("[p]", "Previous page")
-        table.add_row("[q]", "Return to main menu")
+            table.add_row("\\[p]", "Previous page")
+        table.add_row("\\[q]", "Return to main menu")
         console.print(
             Panel(
                 table,
