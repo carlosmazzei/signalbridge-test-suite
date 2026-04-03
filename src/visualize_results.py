@@ -13,7 +13,7 @@ from rich import box
 from rich.panel import Panel
 from rich.table import Table
 
-from base_test import STATISTICS_DISPLAY_NAMES, STATUS_ERROR_KEYS
+from base_test import STATISTICS_DISPLAY_NAMES, STATUS_ERROR_KEYS, TASK_DISPLAY_NAMES
 from const import TEST_RESULTS_FOLDER
 from logger_config import setup_logging
 from result_format import (
@@ -865,7 +865,7 @@ class VisualizeResults:
             )
 
     def _visualize_stress_run(self, data: dict) -> None:
-        """Visualize a stress run result JSON."""
+        """Visualize a stress run result JSON with full scenario coverage."""
         scenarios = data.get("scenarios", [])
         if not scenarios:
             logger.info("No scenarios found in stress result.")
@@ -874,38 +874,61 @@ class VisualizeResults:
         run_id = data.get("run_id", "Unknown")
         overall = data.get("overall_verdict", "UNKNOWN")
 
-        names = [s.get("name", "Unnamed") for s in scenarios]
-        drop_ratios = [s.get("drop_ratio", 0.0) * 100.0 for s in scenarios]
-        p95s = [s.get("p95_ms", 0.0) for s in scenarios]
-
-        # Aggregate error items per scenario
-        error_totals = []
+        # -- Build scenario labels that include profile and tags --------
+        names = []
         for s in scenarios:
-            delta = s.get("status_delta", {})
-            # Handle {"statistics": {...}} vs direct {...}
-            stats_dict = delta.get("statistics", delta)
-            total_err = sum(
-                int(v) for k, v in stats_dict.items() if k in STATUS_ERROR_KEYS
-            )
-            error_totals.append(total_err)
+            name = s.get("name", "Unnamed")
+            profile = s.get("command_profile", "")
+            tags = s.get("tags", [])
+            label = name
+            if profile:
+                label += f"\n[{profile}]"
+            if tags:
+                label += f"\n({', '.join(tags)})"
+            names.append(label)
 
-        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 12))  # pragma: no mutate
-        fig.suptitle(
-            f"Stress Test Run: {run_id}\nOverall Verdict: {overall}",
+        short_names = [s.get("name", "Unnamed") for s in scenarios]
+
+        self._stress_fig_overview(scenarios, names, short_names, run_id, overall)
+        self._stress_fig_latency_boxplot(scenarios, run_id)
+        self._stress_fig_errors_and_verdicts(scenarios, short_names, run_id)
+        self._visualize_stress_task_snapshots(scenarios, run_id)
+
+    def _stress_fig_overview(
+        self,
+        scenarios: list[dict],
+        names: list[str],
+        short_names: list[str],
+        run_id: str,
+        overall: str,
+    ) -> None:
+        """Figure 1: Drop Ratio, Latency Percentiles, Messages."""
+        drop_ratios = [s.get("drop_ratio", 0.0) * 100.0 for s in scenarios]
+        p50s = [s.get("p50_ms", 0.0) for s in scenarios]
+        p95s = [s.get("p95_ms", 0.0) for s in scenarios]
+        p99s = [s.get("p99_ms", 0.0) for s in scenarios]
+        msgs_sent = [s.get("messages_sent", 0) for s in scenarios]
+        msgs_recv = [s.get("messages_received", 0) for s in scenarios]
+        x = np.arange(len(short_names))
+
+        w = max(10, len(scenarios) * 1.2)
+        fig1, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(w, 14))  # pragma: no mutate
+        fig1.suptitle(
+            f"Stress Test Overview: {run_id}\nOverall Verdict: {overall}",
             fontsize=14,
             fontweight="bold",
         )  # pragma: no mutate
 
-        x = np.arange(len(names))
-
-        # 1. Drop Ratio
+        # 1a. Drop Ratio
         bars1 = ax1.bar(
             x, drop_ratios, color="skyblue", edgecolor="black"
         )  # pragma: no mutate
         ax1.set_ylabel("Drop Ratio (%)")  # pragma: no mutate
         ax1.set_title("Message Drop Ratio by Scenario")  # pragma: no mutate
         ax1.set_xticks(x)  # pragma: no mutate
-        ax1.set_xticklabels(names, rotation=15, ha="right")  # pragma: no mutate
+        ax1.set_xticklabels(
+            names, rotation=30, ha="right", fontsize=7
+        )  # pragma: no mutate
         ax1.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
         for bar in bars1:
             yval = bar.get_height()
@@ -915,59 +938,359 @@ class VisualizeResults:
                 f"{yval:.2f}%",
                 ha="center",
                 va="bottom",
-                fontsize=8,
+                fontsize=7,
             )  # pragma: no mutate
 
-        # 2. P95 Latency
-        bars2 = ax2.bar(
-            x, p95s, color="lightgreen", edgecolor="black"
+        # 1b. Latency Percentiles (P50 / P95 / P99 grouped bars)
+        bw = 0.25  # pragma: no mutate
+        bars_p50 = ax2.bar(
+            x - bw,
+            p50s,
+            bw,
+            label="P50",
+            color="lightgreen",
+            edgecolor="black",
         )  # pragma: no mutate
-        ax2.set_ylabel("P95 Latency (ms)")  # pragma: no mutate
-        ax2.set_title("95th Percentile Latency by Scenario")  # pragma: no mutate
+        bars_p95 = ax2.bar(
+            x,
+            p95s,
+            bw,
+            label="P95",
+            color="gold",
+            edgecolor="black",
+        )  # pragma: no mutate
+        bars_p99 = ax2.bar(
+            x + bw,
+            p99s,
+            bw,
+            label="P99",
+            color="salmon",
+            edgecolor="black",
+        )  # pragma: no mutate
+        ax2.set_ylabel("Latency (ms)")  # pragma: no mutate
+        ax2.set_title(
+            "Latency Percentiles by Scenario (P50 / P95 / P99)"
+        )  # pragma: no mutate
         ax2.set_xticks(x)  # pragma: no mutate
-        ax2.set_xticklabels(names, rotation=15, ha="right")  # pragma: no mutate
-        ax2.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
-        for bar in bars2:
-            yval = bar.get_height()
-            ax2.text(
-                bar.get_x() + bar.get_width() / 2,
-                yval,
-                f"{yval:.1f}",
-                ha="center",
-                va="bottom",
-                fontsize=8,
-            )  # pragma: no mutate
-
-        # 3. Error Counters
-        bars3 = ax3.bar(
-            x, error_totals, color="salmon", edgecolor="black"
+        ax2.set_xticklabels(
+            short_names, rotation=30, ha="right", fontsize=7
         )  # pragma: no mutate
-        ax3.set_ylabel("Total Error Deltas")  # pragma: no mutate
-        ax3.set_title("Status Error Violations by Scenario")  # pragma: no mutate
+        ax2.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
+        ax2.legend(fontsize=8)  # pragma: no mutate
+        for bars in (bars_p50, bars_p95, bars_p99):
+            for bar in bars:
+                yval = bar.get_height()
+                if yval > 0:
+                    ax2.text(
+                        bar.get_x() + bar.get_width() / 2,
+                        yval,
+                        f"{yval:.1f}",
+                        ha="center",
+                        va="bottom",
+                        fontsize=6,
+                    )  # pragma: no mutate
+
+        # 1c. Messages Sent vs Received
+        bw2 = 0.35  # pragma: no mutate
+        ax3.bar(
+            x - bw2 / 2,
+            msgs_sent,
+            bw2,
+            label="Sent",
+            color="steelblue",
+            edgecolor="black",
+        )  # pragma: no mutate
+        ax3.bar(
+            x + bw2 / 2,
+            msgs_recv,
+            bw2,
+            label="Received",
+            color="mediumseagreen",
+            edgecolor="black",
+        )  # pragma: no mutate
+        ax3.set_ylabel("Message Count")  # pragma: no mutate
+        ax3.set_title("Messages Sent vs Received by Scenario")  # pragma: no mutate
         ax3.set_xticks(x)  # pragma: no mutate
-        ax3.set_xticklabels(names, rotation=15, ha="right")  # pragma: no mutate
+        ax3.set_xticklabels(
+            short_names, rotation=30, ha="right", fontsize=7
+        )  # pragma: no mutate
         ax3.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
-        for idx, bar in enumerate(bars3):
-            yval = bar.get_height()
-            # If scenario failed, add reason to text
-            verdict = scenarios[idx].get("verdict", "")
-            reasons = scenarios[idx].get("failure_reasons", [])
-            label = f"{yval}\n{verdict}"
-            if verdict == "FAIL" and reasons:
-                # Add first reason briefly
-                label += f"\n{reasons[0][:20]}..."
-            ax3.text(
-                bar.get_x() + bar.get_width() / 2,
-                yval,
-                label,
-                ha="center",
-                va="bottom",
-                fontsize=8,
-                color="red" if verdict == "FAIL" else "black",
-            )  # pragma: no mutate
+        ax3.legend(fontsize=8)  # pragma: no mutate
 
         plt.tight_layout()  # pragma: no mutate
         plt.subplots_adjust(top=0.90)  # pragma: no mutate
+        plt.show()
+
+    def _stress_fig_latency_boxplot(
+        self,
+        scenarios: list[dict],
+        run_id: str,
+    ) -> None:
+        """Figure 2: Latency distribution boxplot for scenarios with data."""
+        latency_scenarios = [
+            (s.get("name", "Unnamed"), s.get("latencies_ms", []))
+            for s in scenarios
+            if s.get("latencies_ms")
+        ]
+        if not latency_scenarios:
+            return
+
+        lat_names, lat_data = zip(*latency_scenarios, strict=True)
+        w = max(10, len(lat_names) * 1.5)
+        fig2, ax_box = plt.subplots(figsize=(w, 6))  # pragma: no mutate
+        fig2.suptitle(
+            f"Latency Distribution: {run_id}",
+            fontsize=14,
+            fontweight="bold",
+        )  # pragma: no mutate
+        bp = ax_box.boxplot(
+            lat_data, showmeans=True, patch_artist=True, labels=lat_names
+        )
+        for patch in bp["boxes"]:
+            patch.set_facecolor("lightyellow")  # pragma: no mutate
+        ax_box.set_ylabel("Latency (ms)")  # pragma: no mutate
+        ax_box.set_title(
+            "Round-trip Latency Distribution per Scenario"
+        )  # pragma: no mutate
+        ax_box.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
+        plt.setp(
+            ax_box.get_xticklabels(), rotation=30, ha="right", fontsize=8
+        )  # pragma: no mutate
+        plt.tight_layout()  # pragma: no mutate
+        plt.show()
+
+    def _stress_fig_errors_and_verdicts(
+        self,
+        scenarios: list[dict],
+        short_names: list[str],
+        run_id: str,
+    ) -> None:
+        """Figure 3: Error counter breakdown + verdict summary."""
+        x = np.arange(len(short_names))
+
+        # Collect per-scenario, per-error-key deltas
+        error_counters: list[dict[str, int]] = []
+        error_totals: list[int] = []
+        for s in scenarios:
+            delta = s.get("status_delta", {})
+            stats_dict = delta.get("statistics", delta)
+            error_counters.append(
+                {k: int(stats_dict.get(k, 0)) for k in STATUS_ERROR_KEYS}
+            )
+            error_totals.append(
+                sum(int(v) for k, v in stats_dict.items() if k in STATUS_ERROR_KEYS)
+            )
+
+        # Identify error types that actually occurred
+        active_keys = [
+            key
+            for key in STATUS_ERROR_KEYS
+            if any(ec.get(key, 0) > 0 for ec in error_counters)
+        ]
+
+        w = max(10, len(scenarios) * 1.2)
+        fig3, (ax_err, ax_vrd) = plt.subplots(
+            2,
+            1,
+            figsize=(w, 10),
+            gridspec_kw={"height_ratios": [2, 1]},
+        )  # pragma: no mutate
+        fig3.suptitle(
+            f"Error Analysis & Verdicts: {run_id}",
+            fontsize=14,
+            fontweight="bold",
+        )  # pragma: no mutate
+
+        if active_keys:
+            bottom = np.zeros(len(scenarios))
+            colors_err = cm.get_cmap("tab20")(np.linspace(0, 1, len(active_keys)))
+            for idx_k, key in enumerate(active_keys):
+                values = [ec.get(key, 0) for ec in error_counters]
+                friendly = STATISTICS_DISPLAY_NAMES.get(key, key)
+                ax_err.bar(
+                    x,
+                    values,
+                    bottom=bottom,
+                    label=friendly,
+                    color=colors_err[idx_k],
+                    edgecolor="black",
+                    alpha=0.85,
+                )  # pragma: no mutate
+                bottom += np.array(values)
+            ax_err.legend(
+                bbox_to_anchor=(1.02, 1),
+                loc="upper left",
+                fontsize=7,
+                framealpha=0.9,
+            )  # pragma: no mutate
+        else:
+            ax_err.bar(
+                x, error_totals, color="salmon", edgecolor="black"
+            )  # pragma: no mutate
+
+        ax_err.set_ylabel("Error Count (Delta)")  # pragma: no mutate
+        ax_err.set_title("Error Counter Breakdown by Scenario")  # pragma: no mutate
+        ax_err.set_xticks(x)  # pragma: no mutate
+        ax_err.set_xticklabels(
+            short_names, rotation=30, ha="right", fontsize=7
+        )  # pragma: no mutate
+        ax_err.grid(axis="y", linestyle="--", alpha=0.7)  # pragma: no mutate
+
+        # Verdict summary bar
+        verdict_colors = {
+            "PASS": "forestgreen",
+            "WARN": "orange",
+            "FAIL": "red",
+        }
+        verdicts = [s.get("verdict", "PASS") for s in scenarios]
+        v_colors = [verdict_colors.get(v, "gray") for v in verdicts]
+        ax_vrd.bar(
+            x,
+            [1] * len(scenarios),
+            color=v_colors,
+            edgecolor="black",
+        )  # pragma: no mutate
+        ax_vrd.set_yticks([])  # pragma: no mutate
+        ax_vrd.set_title("Scenario Verdicts")  # pragma: no mutate
+        ax_vrd.set_xticks(x)  # pragma: no mutate
+        ax_vrd.set_xticklabels(
+            short_names, rotation=30, ha="right", fontsize=7
+        )  # pragma: no mutate
+        for idx_s, (v, s) in enumerate(
+            zip(verdicts, scenarios, strict=True),
+        ):
+            reasons = s.get("failure_reasons", [])
+            label = v
+            if v == "FAIL" and reasons:
+                label += f"\n{reasons[0][:30]}..."
+            text_color = "white" if v == "FAIL" else "black"
+            ax_vrd.text(
+                idx_s,
+                0.5,
+                label,
+                ha="center",
+                va="center",
+                fontsize=7,
+                color=text_color,
+                fontweight="bold",
+            )  # pragma: no mutate
+
+        plt.tight_layout()  # pragma: no mutate
+        plt.subplots_adjust(top=0.90, right=0.82)  # pragma: no mutate
+        plt.show()
+
+    def _visualize_stress_task_snapshots(
+        self,
+        scenarios: list[dict],
+        run_id: str,
+    ) -> None:
+        """Render FreeRTOS task snapshot data when present in stress results."""
+        task_scenarios = [
+            (s.get("name", "Unnamed"), s.get("task_snapshot", {}))
+            for s in scenarios
+            if s.get("task_snapshot")
+        ]
+        if not task_scenarios:
+            return
+
+        all_tasks: set[str] = set()
+        for _, snapshot in task_scenarios:
+            all_tasks.update(snapshot.keys())
+        if not all_tasks:
+            return
+
+        sorted_tasks = sorted(all_tasks)
+        scenario_labels = [name for name, _ in task_scenarios]
+        metric_matrix = self._build_task_metric_matrix(
+            sorted_tasks,
+            task_scenarios,
+        )
+        if metric_matrix.sum() == 0:
+            return
+
+        friendly_names = [TASK_DISPLAY_NAMES.get(t, t) for t in sorted_tasks]
+        metric_label = "CPU %"  # pragma: no mutate
+        self._render_task_heatmap(
+            metric_matrix,
+            scenario_labels,
+            friendly_names,
+            metric_label,
+            run_id,
+        )
+
+    @staticmethod
+    def _build_task_metric_matrix(
+        sorted_tasks: list[str],
+        task_scenarios: list[tuple[str, dict]],
+    ) -> np.ndarray:
+        """Build rows=tasks, cols=scenarios metric matrix."""
+        matrix = np.zeros((len(sorted_tasks), len(task_scenarios)))
+        for col, (_, snapshot) in enumerate(task_scenarios):
+            for row, task_name in enumerate(sorted_tasks):
+                task_data = snapshot.get(task_name, {})
+                if isinstance(task_data, dict):
+                    matrix[row, col] = task_data.get(
+                        "percentage",
+                        task_data.get("watermark", 0),
+                    )
+        return matrix
+
+    def _render_task_heatmap(
+        self,
+        metric_matrix: np.ndarray,
+        scenario_labels: list[str],
+        friendly_names: list[str],
+        metric_label: str,
+        run_id: str,
+    ) -> None:
+        """Render heatmap figure for task snapshot data."""
+        w = max(10, len(scenario_labels) * 1.5)
+        h = max(5, len(friendly_names) * 0.5)
+        fig4, ax = plt.subplots(figsize=(w, h))  # pragma: no mutate
+        fig4.suptitle(
+            f"FreeRTOS Task Snapshot: {run_id}",
+            fontsize=14,
+            fontweight="bold",
+        )  # pragma: no mutate
+
+        im = ax.imshow(
+            metric_matrix,
+            aspect="auto",
+            cmap="YlGnBu",
+            interpolation="nearest",
+        )  # pragma: no mutate
+        ax.set_xticks(np.arange(len(scenario_labels)))  # pragma: no mutate
+        ax.set_yticks(np.arange(len(friendly_names)))
+        ax.set_xticklabels(
+            scenario_labels, fontsize=8, rotation=30, ha="right"
+        )  # pragma: no mutate
+        ax.set_yticklabels(friendly_names, fontsize=8)
+        ax.set_xlabel("Scenario")  # pragma: no mutate
+        ax.set_ylabel("Task")  # pragma: no mutate
+        ax.set_title(f"Task Metrics ({metric_label})")  # pragma: no mutate
+
+        cbar = plt.colorbar(im, ax=ax)  # pragma: no mutate
+        cbar.set_label(metric_label, rotation=270, labelpad=15)
+
+        # Annotate cells
+        threshold = metric_matrix.max() / 2
+        for i in range(metric_matrix.shape[0]):
+            for j in range(metric_matrix.shape[1]):
+                value = metric_matrix[i, j]
+                if value > 0:
+                    clr = "white" if value > threshold else "black"
+                    ax.text(
+                        j,
+                        i,
+                        f"{value:.0f}",
+                        ha="center",
+                        va="center",
+                        color=clr,
+                        fontsize=7,
+                        fontweight="bold",
+                    )  # pragma: no mutate
+
+        plt.tight_layout()  # pragma: no mutate
         plt.show()
 
     def execute_visualization(self) -> None:
