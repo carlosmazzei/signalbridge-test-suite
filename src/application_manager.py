@@ -15,6 +15,7 @@ from rich.table import Table
 
 from baud_rate_test import BaudRateTest
 from command_mode import CommandMode
+from keypad_adc_monitor import KeypadAdcMonitor
 from latency_test import LatencyTest
 from logger_config import setup_logging
 from regression_test import RegressionTest
@@ -44,6 +45,7 @@ class Mode(Enum):
     STATUS = 5
     BAUD_SWEEP = 6
     STRESS = 7
+    KEYPAD_ADC_MONITOR = 8
 
 
 @dataclass
@@ -153,6 +155,16 @@ class ApplicationManager:
                 builder=lambda: VisualizeResults(),  # noqa: PLW0108  # lambda needed to support mock patching during tests
                 runner=lambda module: module.execute_visualization(),
                 requires_serial=False,
+            ),
+            ModuleConfig(
+                key="8",
+                mode=Mode.KEYPAD_ADC_MONITOR,
+                description="Keypad & ADC monitor",
+                builder=lambda: KeypadAdcMonitor(self.serial_interface),
+                runner=lambda module: module.execute_monitor(),
+                handler=lambda module, command, data, _unused: module.handle_message(
+                    command, data
+                ),
             ),
         ]
         self.module_configs_by_mode = {cfg.mode: cfg for cfg in self.module_configs}
@@ -287,7 +299,7 @@ class ApplicationManager:
     # Key "0" (connection toggle) and the exit key are handled separately.
     _MENU_GROUPS: ClassVar[list[tuple[str, list[str]]]] = [
         ("Tests", ["1", "2", "3", "4"]),
-        ("Tools & Analysis", ["5", "6", "7"]),
+        ("Tools & Analysis", ["5", "6", "7", "8"]),
     ]
 
     def _build_menu_table(self) -> Table:
