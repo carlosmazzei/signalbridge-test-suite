@@ -114,53 +114,94 @@ def test_visualize_stress_run(visualize_results: VisualizeResults) -> None:
         "scenarios": [
             {
                 "name": "echo_burst",
+                "command_profile": "echo_only",
+                "tags": ["ci", "quick"],
                 "drop_ratio": 0.0,
+                "p50_ms": 2.0,
                 "p95_ms": 10.5,
+                "p99_ms": 15.0,
+                "messages_sent": 500,
+                "messages_received": 500,
+                "latencies_ms": [1.0, 2.0, 3.0, 4.0, 5.0],
                 "status_delta": {"statistics": {"cobs_decode_error": 5}},
+                "task_snapshot": {
+                    "cdc_task": {"percentage": 10},
+                    "idle_task": {"percentage": 80},
+                },
                 "verdict": "PASS",
                 "failure_reasons": [],
             },
             {
                 "name": "bad_scenario",
+                "command_profile": "mixed",
+                "tags": ["ci"],
                 "drop_ratio": 1.0,
+                "p50_ms": 50.0,
                 "p95_ms": 100.0,
+                "p99_ms": 120.0,
+                "messages_sent": 400,
+                "messages_received": 0,
+                "latencies_ms": [],
                 "status_delta": {"cobs_decode_error": 10},
+                "task_snapshot": {},
                 "verdict": "FAIL",
                 "failure_reasons": ["Too many dropped"],
             },
         ],
     }
+
+    def make_bar_mock():
+        m = Mock()
+        m.get_x.return_value = 0.0
+        m.get_width.return_value = 0.8
+        m.get_height.return_value = 10.0
+        return m
+
+    def make_subplots_side_effect(
+        *args: object,
+        **kwargs: object,
+    ) -> tuple[Mock, object]:
+        """Return appropriate mock axes depending on the subplots call."""
+        fig = Mock()
+        nrows = args[0] if args else kwargs.get("nrows", 1)
+        ncols = args[1] if len(args) > 1 else kwargs.get("ncols", 1)
+        if nrows == 3 and ncols == 1:
+            axes = []
+            for _ in range(3):
+                ax = Mock()
+                ax.bar.return_value = [make_bar_mock(), make_bar_mock()]
+                axes.append(ax)
+            return fig, tuple(axes)
+        if nrows == 2 and ncols == 1:
+            axes = []
+            for _ in range(2):
+                ax = Mock()
+                ax.bar.return_value = [make_bar_mock(), make_bar_mock()]
+                axes.append(ax)
+            return fig, tuple(axes)
+        # Single axis (boxplot, heatmap)
+        ax = Mock()
+        bp_mock = {"boxes": [Mock()]}
+        ax.boxplot.return_value = bp_mock
+        ax.imshow.return_value = Mock()
+        return fig, ax
+
     with (
-        patch("visualize_results.plt.subplots") as mock_subplots,
+        patch("visualize_results.plt.subplots", side_effect=make_subplots_side_effect),
         patch("visualize_results.plt.tight_layout"),
         patch("visualize_results.plt.subplots_adjust"),
-        patch("visualize_results.plt.show"),
+        patch("visualize_results.plt.show") as mock_show,
+        patch("visualize_results.plt.setp"),
+        patch("visualize_results.plt.colorbar", return_value=Mock()),
+        patch(
+            "visualize_results.cm.get_cmap", return_value=lambda _: [(0, 0, 0, 1)] * 20
+        ),
     ):
-        mock_fig = Mock()
-        mock_ax1 = Mock()
-        mock_ax2 = Mock()
-        mock_ax3 = Mock()
-
-        def make_bar_mock():
-            m = Mock()
-            m.get_x.return_value = 0.0
-            m.get_width.return_value = 0.8
-            m.get_height.return_value = 10.0
-            return m
-
-        mock_ax1.bar.return_value = [make_bar_mock(), make_bar_mock()]
-        mock_ax2.bar.return_value = [make_bar_mock(), make_bar_mock()]
-        mock_ax3.bar.return_value = [make_bar_mock(), make_bar_mock()]
-        mock_subplots.return_value = (mock_fig, (mock_ax1, mock_ax2, mock_ax3))
-
-        # Test valid data
         visualize_results._visualize_stress_run(mock_data)
 
-        # Verify subplots were called
-        mock_subplots.assert_called_once_with(3, 1, figsize=(10, 12))
-        mock_ax1.bar.assert_called_once()
-        mock_ax2.bar.assert_called_once()
-        mock_ax3.bar.assert_called_once()
+        # Figure 1 (overview) + Figure 2 (boxplot) + Figure 3 (errors+verdicts)
+        # + Figure 4 (task snapshot) = 4 plt.show() calls
+        assert mock_show.call_count == 4
 
     # Test empty scenarios
     with patch("visualize_results.logger.info") as mock_log:
@@ -1072,6 +1113,124 @@ def test_visualize_stress_run_called_for_dict(
     ):
         visualize_results.visualize_test_results()
         mock_stress.assert_called_once_with(stress_data)
+
+
+def test_visualize_stress_run_no_latencies_no_tasks(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Stress run with fault-injection-only scenarios (no latencies, no task_snapshot)."""
+    mock_data = {
+        "run_id": "fi-only",
+        "overall_verdict": "PASS",
+        "scenarios": [
+            {
+                "name": "fi_bad_checksum",
+                "command_profile": "fault_injection",
+                "tags": ["ci", "fault_injection"],
+                "drop_ratio": 0.0,
+                "p50_ms": 0.0,
+                "p95_ms": 0.0,
+                "p99_ms": 0.0,
+                "messages_sent": 0,
+                "messages_received": 0,
+                "latencies_ms": [],
+                "status_delta": {"checksum_error": 1},
+                "task_snapshot": {},
+                "verdict": "PASS",
+                "failure_reasons": [],
+            },
+        ],
+    }
+
+    def make_bar_mock():
+        m = Mock()
+        m.get_x.return_value = 0.0
+        m.get_width.return_value = 0.8
+        m.get_height.return_value = 0.0
+        return m
+
+    def make_subplots_side_effect(
+        *args: object,
+        **kwargs: object,
+    ) -> tuple[Mock, object]:
+        """Return appropriate mock axes."""
+        fig = Mock()
+        nrows = args[0] if args else kwargs.get("nrows", 1)
+        ncols = args[1] if len(args) > 1 else kwargs.get("ncols", 1)
+        if nrows >= 2 and ncols == 1:
+            axes = tuple(Mock() for _ in range(nrows))
+            for ax in axes:
+                ax.bar.return_value = [make_bar_mock()]
+            return fig, axes
+        ax = Mock()
+        ax.imshow.return_value = Mock()
+        return fig, ax
+
+    with (
+        patch("visualize_results.plt.subplots", side_effect=make_subplots_side_effect),
+        patch("visualize_results.plt.tight_layout"),
+        patch("visualize_results.plt.subplots_adjust"),
+        patch("visualize_results.plt.show") as mock_show,
+        patch("visualize_results.plt.colorbar", return_value=Mock()),
+        patch(
+            "visualize_results.cm.get_cmap", return_value=lambda _: [(0, 0, 0, 1)] * 20
+        ),
+    ):
+        visualize_results._visualize_stress_run(mock_data)
+
+        # Figure 1 (overview) + Figure 3 (errors+verdicts) = 2
+        # No boxplot (no latencies), no task snapshot (empty)
+        assert mock_show.call_count == 2
+
+
+def test_visualize_stress_task_snapshots(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Test _visualize_stress_task_snapshots renders heatmap for task data."""
+    scenarios = [
+        {
+            "name": "echo_burst",
+            "task_snapshot": {
+                "cdc_task": {"percentage": 12},
+                "idle_task": {"percentage": 75},
+            },
+        },
+        {
+            "name": "mixed_burst",
+            "task_snapshot": {
+                "cdc_task": {"percentage": 15},
+                "idle_task": {"percentage": 70},
+                "uart_event_task": {"watermark": 200},
+            },
+        },
+    ]
+
+    mock_ax = Mock()
+    mock_ax.imshow.return_value = Mock()
+    mock_fig = Mock()
+
+    with (
+        patch("visualize_results.plt.subplots", return_value=(mock_fig, mock_ax)),
+        patch("visualize_results.plt.tight_layout"),
+        patch("visualize_results.plt.colorbar", return_value=Mock()),
+        patch("visualize_results.plt.show") as mock_show,
+    ):
+        visualize_results._visualize_stress_task_snapshots(scenarios, "run-1")
+        mock_show.assert_called_once()
+        mock_ax.imshow.assert_called_once()
+
+
+def test_visualize_stress_task_snapshots_empty(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Test _visualize_stress_task_snapshots skips when no task data."""
+    scenarios = [
+        {"name": "fi_empty", "task_snapshot": {}},
+        {"name": "fi_short"},
+    ]
+    with patch("visualize_results.plt.show") as mock_show:
+        visualize_results._visualize_stress_task_snapshots(scenarios, "run-2")
+        mock_show.assert_not_called()
 
 
 def test_status_error_delta_total_values(
