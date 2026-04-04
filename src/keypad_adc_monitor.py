@@ -54,7 +54,7 @@ class KeypadAdcMonitor:
         try:
             if command == SerialCommand.KEY_COMMAND.value:
                 col = (decoded_data[3] >> 4) & 0x0F
-                row = (decoded_data[3] >> 1) & 0x0F
+                row = (decoded_data[3] >> 1) & 0x07
                 state = decoded_data[3] & 0x01
                 ts = time.time()
                 with self._lock:

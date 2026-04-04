@@ -46,7 +46,7 @@ def _make_adc_msg(channel: int, value: int) -> bytes:
 
 def _make_key_msg(col: int, row: int, state: int) -> bytes:
     """Build a minimal decoded_data bytes object for a KEY message."""
-    key_byte = ((col & 0x0F) << 4) | ((row & 0x0F) << 1) | (state & 0x01)
+    key_byte = ((col & 0x0F) << 4) | ((row & 0x07) << 1) | (state & 0x01)
     return bytes([0x00, 0x04, 0x01, key_byte])
 
 
@@ -112,6 +112,38 @@ def test_handle_key_message_released(monitor: KeypadAdcMonitor) -> None:
 
     events = list(monitor._keypad_events)
     assert events[0][2] == 0
+
+
+def test_handle_key_message_odd_column(monitor: KeypadAdcMonitor) -> None:
+    """Row is decoded correctly when column is odd (regression for 0x0F mask bug)."""
+    msg = _make_key_msg(col=3, row=5, state=1)
+    monitor.handle_message(SerialCommand.KEY_COMMAND.value, msg)
+
+    events = list(monitor._keypad_events)
+    assert len(events) == 1
+    col, row, state, _ = events[0]
+    assert col == 3
+    assert row == 5
+    assert state == 1
+
+
+@pytest.mark.parametrize(
+    ("col", "row", "state"),
+    [(c, r, s) for c in (0, 1, 7, 15) for r in (0, 1, 7) for s in (0, 1)],
+)
+def test_handle_key_message_full_matrix(
+    monitor: KeypadAdcMonitor, col: int, row: int, state: int
+) -> None:
+    """Column (4-bit), row (3-bit), and state decode correctly across the matrix."""
+    msg = _make_key_msg(col=col, row=row, state=state)
+    monitor.handle_message(SerialCommand.KEY_COMMAND.value, msg)
+
+    events = list(monitor._keypad_events)
+    assert len(events) == 1
+    decoded_col, decoded_row, decoded_state, _ = events[0]
+    assert decoded_col == col
+    assert decoded_row == row
+    assert decoded_state == state
 
 
 def test_handle_key_event_history_limit(monitor: KeypadAdcMonitor) -> None:
