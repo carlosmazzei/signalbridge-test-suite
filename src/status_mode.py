@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 # Reverse lookup: name -> index for TASK_ITEMS
 _TASK_INDEX_BY_NAME = {name: idx for idx, name in TASK_ITEMS.items()}
 
+_STACK_PCT_HIGH_THRESHOLD = 75  # % used → red
+_STACK_PCT_MED_THRESHOLD = 50  # % used → yellow
+
 # Statistics keys that represent error counters (value > 0 is bad)
 _ERROR_STAT_NAMES = frozenset(STATISTICS_DISPLAY_NAMES) - {
     "bytes_sent",
@@ -252,6 +255,7 @@ class StatusMode:
         task_table.add_column("Abs Time (mm:ss:ms)", justify="right")
         task_table.add_column("% Time", justify="right")
         task_table.add_column("High Watermark", justify="right")
+        task_table.add_column("Stack %", justify="right")
         task_table.add_column("Last Updated", style="dim")
 
         for idx, item in self.task_items.items():
@@ -266,6 +270,19 @@ class StatusMode:
             else:
                 wm_label = str(item.high_watermark)
 
+            if idx == IDLE_TASK_INDEX or stack == 0 or item.high_watermark == 0:
+                stack_pct_str = "[dim]N/A[/dim]"
+            else:
+                # Watermark is in words (FreeRTOS ARM Cortex-M0+, 4 bytes/word)
+                pct = (stack - item.high_watermark * 4) / stack * 100
+                if pct >= _STACK_PCT_HIGH_THRESHOLD:
+                    color = "red"
+                elif pct >= _STACK_PCT_MED_THRESHOLD:
+                    color = "yellow"
+                else:
+                    color = "green"
+                stack_pct_str = f"[{color}]{pct:.1f}%[/{color}]"
+
             stack_str = f"{stack:,}" if stack > 0 else "[dim]N/A[/dim]"
             task_table.add_row(
                 item.name,
@@ -274,6 +291,7 @@ class StatusMode:
                 formatted_time,
                 f"{item.percent_time}%",
                 wm_label,
+                stack_pct_str,
                 self._fmt_timestamp(item.last_updated),
             )
 
