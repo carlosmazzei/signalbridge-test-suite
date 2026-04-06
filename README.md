@@ -13,7 +13,7 @@
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-A Python testing suite for the SignalBridge embedded controller (Raspberry Pi Pico). Communicates over UART using COBS framing and XOR checksums, providing latency measurement, baud rate sweep testing, stress testing, interactive command mode, system status monitoring, regression testing, and result visualization.
+A Python testing suite for the SignalBridge embedded controller (Raspberry Pi Pico). Communicates over UART using COBS framing and XOR checksums, providing latency measurement, baud rate sweep testing, stress testing, interactive command mode, system status monitoring, regression testing, keypad & ADC monitoring, and result visualization.
 
 > [!TIP]
 > This test suite is designed for the Raspberry Pi Pico-based SignalBridge controller firmware.
@@ -70,6 +70,7 @@ Common port names:
 | Status mode          | Live statistics and FreeRTOS task performance monitoring          |
 | Regression test      | Automated echo-command validation                                 |
 | Visualize results    | Boxplot, histogram, controller health, and error counter charts   |
+| Keypad & ADC monitor | Real-time sparkline display of ADC channels and keypad events     |
 
 **Protocol stack:** COBS framing · XOR checksum · hardware RTS/CTS flow control · multi-threaded read/write
 
@@ -93,8 +94,9 @@ SignalBridge Test Suite  —  ● Connected  /dev/cu.usbmodem101  921,600 baud
   [5]  Send command
   [6]  Status mode
   [7]  Visualize test results
+  [8]  Keypad & ADC monitor
 
-  [8]  Exit
+  [9]  Exit
 ```
 
 Menu items that require a serial connection are dimmed when the device is not connected. Use `[0]` to toggle the connection at any time.
@@ -176,7 +178,34 @@ Polls and displays FreeRTOS statistics and task performance in Rich tables.
 
 **Tasks monitored:** `cdc_task`, `cdc_write_task`, `uart_event_task`, `led_status_task`, `decode_reception_task`, `process_outbound_task`, `adc_read_task`, `keypad_task`, `encoder_read_task`, `idle_task` (system/heap info).
 
-### 7. Visualize Test Results
+### 8. Keypad & ADC Monitor
+
+Passively monitors incoming keypad and ADC frames in real-time without sending any commands to the device. The display auto-refreshes at 2 Hz using a live Rich panel.
+
+**ADC panel** — one row per active channel:
+
+| Column | Detail |
+|--------|--------|
+| Ch | Channel number (0–15) |
+| Last Value | Most recent 12-bit ADC reading (0–4095), colour-coded green / yellow / red |
+| Trend | Unicode sparkline `▁▂▃▄▅▆▇█` of the last 10 values |
+| Last Updated | UTC timestamp of the most recent sample |
+
+**Keypad events panel** — rolling log of the last 20 press/release events, newest first:
+
+| Column | Detail |
+|--------|--------|
+| # | Entry number (1 = most recent) |
+| Time | UTC timestamp (HH:MM:SS.mmm) |
+| Col / Row | Matrix coordinates |
+| State | `PRESSED` (green) or `RELEASED` (dim) |
+
+Press **ENTER** to exit back to the main menu.
+
+> [!NOTE]
+> The ADC task on the firmware runs continuously, so values update frequently. The keypad panel only appends an entry when a key state changes (press or release).
+
+### 9. Visualize Test Results
 
 Browse JSON files from `test_results/` (paginated, 10 per page) and choose a plot type:
 
@@ -235,6 +264,7 @@ signalbridge-test-suite/
 │   ├── stress_reporter.py     # JSON report writer + Rich summary
 │   ├── command_mode.py        # Interactive command interface
 │   ├── status_mode.py         # FreeRTOS status monitoring
+│   ├── keypad_adc_monitor.py  # Real-time keypad & ADC monitor
 │   ├── regression_test.py     # Echo-command regression test
 │   ├── visualize_results.py   # Matplotlib result visualizer
 │   ├── serial_interface.py    # COBS/UART serial layer
