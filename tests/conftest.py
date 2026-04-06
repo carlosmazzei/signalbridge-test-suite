@@ -7,6 +7,8 @@ from pathlib import Path
 
 # Ensure headless matplotlib backend for CI/mutation runs
 os.environ.setdefault("MPLBACKEND", "Agg")
+# Ensure Rich tables render with enough width to show all columns in tests
+os.environ.setdefault("COLUMNS", "200")
 import logging
 
 logger = logging.getLogger(__name__)

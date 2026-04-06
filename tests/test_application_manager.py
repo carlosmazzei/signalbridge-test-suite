@@ -111,6 +111,7 @@ def test_initialize_success(
         Mode.STATUS,
         Mode.BAUD_SWEEP,
         Mode.STRESS,
+        Mode.KEYPAD_ADC_MONITOR,
     }
     ms.set_message_handler.assert_called_once_with(app_manager.handle_message)
     ms.start_reading.assert_called_once_with()
@@ -230,15 +231,15 @@ def test_app_manager_initial_mode_and_exit_key() -> None:
     assert type(am.connected) is bool
     assert am.monitor_thread is None
     assert am.monitor_thread is None
-    assert am.exit_key == "8"  # keys 1..7 defined above, exit is last+1
+    assert am.exit_key == "9"  # keys 1..8 defined above, exit is last+1
 
 
 def test_menu_items_structure(app_manager: ApplicationManager) -> None:
     """Verify menu items are correctly constructed from config."""
     items = app_manager.menu_items
 
-    # Should have: Connect/Disconnect (0) + 7 modules + Exit
-    assert len(items) == 9
+    # Should have: Connect/Disconnect (0) + 8 modules + Exit
+    assert len(items) == 10
 
     # 1. Connect/Disconnect
     assert items[0].key == "0"
@@ -251,7 +252,7 @@ def test_menu_items_structure(app_manager: ApplicationManager) -> None:
     # 2. Modules (verify keys match config)
     # Map key to description
     item_map = {
-        item.key: item.description() for item in items if item.key not in ("0", "8")
+        item.key: item.description() for item in items if item.key not in ("0", "9")
     }
 
     assert item_map["1"] == "Run latency test"
@@ -261,10 +262,11 @@ def test_menu_items_structure(app_manager: ApplicationManager) -> None:
     assert item_map["5"] == "Send command"
     assert item_map["6"] == "Status mode"
     assert item_map["7"] == "Visualize test results"
+    assert item_map["8"] == "Keypad & ADC monitor"
 
     # 3. Exit
     exit_item = items[-1]
-    assert exit_item.key == "8"
+    assert exit_item.key == "9"
     assert exit_item.description() == "Exit"
 
 
@@ -294,6 +296,7 @@ def test_module_configs_builder_wiring(app_manager: ApplicationManager) -> None:
         Mode.STATUS,
         Mode.BAUD_SWEEP,
         Mode.STRESS,
+        Mode.KEYPAD_ADC_MONITOR,
     }
 
     with (
@@ -372,8 +375,14 @@ def test_module_configs_complete_definition(app_manager: ApplicationManager) -> 
     assert cfg.description == "Visualize test results"
     assert cfg.requires_serial is False
 
+    # 8. Keypad & ADC monitor
+    cfg = configs[Mode.KEYPAD_ADC_MONITOR]
+    assert cfg.key == "8"
+    assert cfg.description == "Keypad & ADC monitor"
+    assert cfg.requires_serial is True
+
     # Verify no unexpected modes
-    assert len(configs) == 7
+    assert len(configs) == 8
 
 
 def test_module_configs_runner_and_handler_wiring(
@@ -918,5 +927,5 @@ def test_exit_key_is_max_module_key_plus_one(
     max_key = max(int(cfg.key) for cfg in app_manager.module_configs)
     expected_exit_key = str(max_key + 1)
     assert app_manager.exit_key == expected_exit_key
-    # With current config, keys are 1..7, so exit key should be "8"
-    assert app_manager.exit_key == "8"
+    # With current config, keys are 1..8, so exit key should be "9"
+    assert app_manager.exit_key == "9"
