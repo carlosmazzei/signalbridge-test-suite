@@ -8,7 +8,7 @@ dependencies = [
     "alive-progress==3.3.0",
     "cobs==1.2.2",
     "matplotlib>=3.8.2",
-    "numpy>=2.2.1",
+    "numpy>=2.4.4",
     "pre-commit==4.5.1",
     "pyserial==3.5",
     "rich>=13.9.0",
