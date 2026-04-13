@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "alive-progress==3.3.0",
     "cobs==1.2.2",
-    "matplotlib>=3.8.2",
+    "matplotlib>=3.10.8",
     "numpy>=2.2.1",
     "pre-commit==4.5.1",
     "pyserial==3.5",
