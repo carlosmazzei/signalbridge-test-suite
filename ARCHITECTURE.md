@@ -19,11 +19,18 @@
 │          │  StatusMode              │               │
 │          │  RegressionTest          │               │
 │          │  CommandMode             │               │
+│          │  StressTest              │               │
+│          │  KeypadAdcMonitor        │               │
+│          │  (+ stress_config,       │               │
+│          │   stress_evaluator,      │               │
+│          │   stress_reporter,       │               │
+│          │   fault_frames)          │               │
 ├──────────┴──────────────────────────┴───────────────┤
 │               SerialInterface                        │  Transport
 │  (COBS encode/decode, threads, flow control)        │
 ├─────────────────────────────────────────────────────┤
-│          checksum.py  ·  const.py                   │  Utilities
+│  checksum · const · result_format · ui_console ·    │  Utilities
+│  logger_config                                      │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -103,7 +110,7 @@ Every test mode that communicates with the device **must** extend `BaseTest` (`s
 | `handle_message(command, decoded_data)` | Dispatch on command ID: ECHO → latency, STATISTICS → `_statistics_values`, TASK_STATUS → `_task_values` |
 | `_calculate_test_results(...)` | Aggregate latency stats (avg/min/max/P95 via numpy) |
 | `_write_output_to_file(path, data)` | Serialize results list to JSON |
-| `_request_status_snapshot(timeout_s)` | Poll all 14 statistics + 9 task items; return `{statistics, tasks, received, complete}` |
+| `_request_status_snapshot(timeout_s)` | Poll all 22 statistics + 10 task items; return `{statistics, tasks, received, complete}` |
 | `_calculate_status_delta(before, after)` | Compute counter deltas between two snapshots |
 | `_get_user_input(prompt, default_value)` | Prompt with default, auto-cast to `type(default_value)` |
 | `_status_lock` | `threading.Lock` — always acquire before reading/writing `_statistics_values` or `_task_values` |
@@ -158,8 +165,8 @@ ID high   ID low | CMD(5b)  length    data…      XOR checksum
 | `ECHO_COMMAND` | 20 | TX/RX | Roundtrip echo |
 | `KEY_COMMAND` | 4 | RX | Keypad event |
 | `ANALOG_COMMAND` | 3 | RX | ADC reading |
-| `STATISTICS_STATUS_COMMAND` | 23 | TX/RX | Error/byte counters (14 items) |
-| `TASK_STATUS_COMMAND` | 24 | TX/RX | FreeRTOS task metrics (9 items) |
+| `STATISTICS_STATUS_COMMAND` | 23 | TX/RX | Error/byte counters (22 items) |
+| `TASK_STATUS_COMMAND` | 24 | TX/RX | FreeRTOS task metrics (10 items) |
 
 Add new commands to the `SerialCommand` enum only; do not hard-code integer literals.
 
@@ -206,7 +213,7 @@ Additional fields (e.g. `baudrate`, `status_delta`, `results` list of individual
 | `BUFFER_HIGH_WATER` | 768 bytes (75%) | `ser.rts = False` — device stops sending |
 | `BUFFER_LOW_WATER` | 256 bytes (25%) | `ser.rts = True` — device resumes sending |
 
-These constants are class attributes on `SerialInterface` and must not be duplicated in other modules.
+These constants are class attributes on `SerialInterface` and must not be duplicated in other modules. The RTS toggle is performed inside the read loop (`SerialInterface._read_loop`) after each chunk is appended to the inbound buffer, so flow control is purely a host-side reaction to buffer pressure.
 
 ---
 
@@ -274,7 +281,7 @@ def serial_interface():
 
 ### Mutation testing targets
 
-`mutmut` is configured to target: `application_manager`, `checksum`, `visualize_results`. When adding a significant new module, add it to the mutmut target list in the pre-commit config.
+`mutmut` mutates every file under `src/` (`setup.cfg [mutmut] paths_to_mutate = src/`). New modules are therefore picked up automatically; no config change is needed. Because the hook is expensive it is declared as a manual pre-commit stage and must be invoked explicitly with `uv run mutmut run` or `pre-commit run mutmut --hook-stage manual`.
 
 ---
 
@@ -285,12 +292,21 @@ main.py
 └── application_manager.py
     ├── serial_interface.py ──► checksum.py
     │                       ──► logger_config.py
-    ├── base_test.py ────────► serial_interface.py
+    ├── base_test.py ────────► serial_interface.py, result_format.py,
+    │                          ui_console.py
     ├── latency_test.py ─────► base_test.py
     ├── baud_rate_test.py ───► base_test.py, latency_test.py
-    ├── status_mode.py ──────► base_test.py (partially), serial_interface.py
+    ├── status_mode.py ──────► base_test.py, serial_interface.py
     ├── command_mode.py ─────► serial_interface.py
     ├── regression_test.py ──► serial_interface.py
+    ├── keypad_adc_monitor.py ► serial_interface.py
+    ├── stress_test.py ──────► base_test.py, stress_config.py,
+    │                          stress_evaluator.py, stress_reporter.py,
+    │                          fault_frames.py
+    ├── stress_evaluator.py ─► stress_config.py
+    ├── stress_reporter.py ──► stress_config.py, result_format.py
+    ├── fault_frames.py (leaf — used by stress_test.py)
+    ├── result_format.py (leaf — used by base_test.py, visualize_results.py)
     └── visualize_results.py (no serial dependency)
 ```
 
@@ -333,7 +349,7 @@ Before submitting a new test mode or protocol extension:
 - [ ] New `Mode` value added to the `Mode` enum.
 - [ ] `ModuleConfig` entry appended to `module_configs` in `ApplicationManager.__init__`.
 - [ ] Module class extends `BaseTest` if it communicates with the device.
-- [ ] Module class has `execute_<verb>(self) -> None` as the runner entry point.
+- [ ] Module class exposes a runner entry point — default `execute_test(self) -> None`. A specialised verb is acceptable when it reads more naturally (existing examples: `execute_baud_test`, `execute_command_mode`, `execute_monitor`, `execute_visualization`). Whichever verb you pick must match the lambda in the module's `ModuleConfig`.
 - [ ] Module class has `handle_message(self, command: int, decoded_data: bytes) -> None` if it receives messages.
 - [ ] All shared state mutations inside `with self._status_lock:`.
 - [ ] New serial commands added to `SerialCommand` enum (integer literals forbidden in handler logic).
