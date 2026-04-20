@@ -192,7 +192,6 @@ def test_display_task_status_outputs_table(capsys: pytest.CaptureFixture[str]) -
     sm.task_items[_TASK_INDEX_BY_NAME["cdc_task"]].absolute_time = 10_000
     sm.task_items[_TASK_INDEX_BY_NAME["uart_event_task"]].absolute_time = 20_000
     sm.task_items[_TASK_INDEX_BY_NAME["idle_task"]].absolute_time = 30_000
-    sm.task_items[_TASK_INDEX_BY_NAME["encoder_read_task"]].absolute_time = 40_000
     sm.task_items[_TASK_INDEX_BY_NAME["adc_read_task"]].absolute_time = 50_000
     sm.task_items[_TASK_INDEX_BY_NAME["keypad_task"]].absolute_time = 60_000
     sm.task_items[_TASK_INDEX_BY_NAME["process_outbound_task"]].absolute_time = 70_000
@@ -307,7 +306,6 @@ def test_display_task_status_shows_computed_totals(
     sm.task_items[_TASK_INDEX_BY_NAME["uart_event_task"]].absolute_time = 2_000_000
     sm.task_items[_TASK_INDEX_BY_NAME["led_status_task"]].absolute_time = 100_000
     sm.task_items[_TASK_INDEX_BY_NAME["idle_task"]].absolute_time = 3_000_000
-    sm.task_items[_TASK_INDEX_BY_NAME["encoder_read_task"]].absolute_time = 4_000_000
     sm.task_items[_TASK_INDEX_BY_NAME["adc_read_task"]].absolute_time = 5_000_000
     sm.task_items[_TASK_INDEX_BY_NAME["keypad_task"]].absolute_time = 6_000_000
     sm.task_items[
@@ -325,10 +323,10 @@ def test_display_task_status_shows_computed_totals(
     # formatted as "3,600,000.000"
     assert "3,600,000.000" in out
 
-    # Core 1 = decode + process + adc + keypad + encoder
-    # = 8M + 7M + 5M + 6M + 4M = 30_000_000
-    # formatted as "30,000,000.000"
-    assert "30,000,000.000" in out
+    # Core 1 = decode + process + adc + keypad
+    # = 8M + 7M + 5M + 6M = 26_000_000
+    # formatted as "26,000,000.000"
+    assert "26,000,000.000" in out
 
     # Heap info from idle_task slot should appear
     assert "Min free heap" in out

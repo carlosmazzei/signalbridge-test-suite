@@ -61,14 +61,13 @@ TASK_ITEMS = {
     4: "process_outbound_task",
     5: "adc_read_task",
     6: "keypad_task",
-    7: "encoder_read_task",
-    8: "led_status_task",
-    9: "idle_task",
+    7: "led_status_task",
+    8: "idle_task",
 }
 
 # Index of the idle/system slot whose third field carries heap info, not a
 # stack high-watermark.
-IDLE_TASK_INDEX: int = 9
+IDLE_TASK_INDEX: int = 8
 
 # Core affinity for each task (0 or 1), matching include/app_config.h
 TASK_CORE_AFFINITY: dict[str, int] = {
@@ -80,7 +79,6 @@ TASK_CORE_AFFINITY: dict[str, int] = {
     "process_outbound_task": 1,
     "adc_read_task": 1,
     "keypad_task": 1,
-    "encoder_read_task": 1,
     "idle_task": -1,  # not pinned to a core
 }
 
@@ -94,7 +92,6 @@ TASK_STACK_BYTES: dict[str, int] = {
     "process_outbound_task": 3072,
     "adc_read_task": 4096,
     "keypad_task": 5120,
-    "encoder_read_task": 5120,
     "idle_task": 0,  # idle task has no user-allocated stack
 }
 
@@ -156,8 +153,7 @@ TASK_DISPLAY_NAMES: dict[str, str] = {
     "decode_reception_task": "Decode reception",
     "process_outbound_task": "Inbound process",
     "adc_read_task": "ADC read",
-    "keypad_task": "Key read",
-    "encoder_read_task": "Encoder read",
+    "keypad_task": "Key + Encoder read",
     "idle_task": "Idle",
     "led_status_task": "LED status update",
 }
