@@ -53,24 +53,24 @@ TIMEOUT   = 0.1                   # Read timeout in seconds
 
 Common port names:
 
-| OS      | Example                   |
-| ------- | ------------------------- |
-| macOS   | `/dev/cu.usbmodem101`     |
-| Linux   | `/dev/ttyACM0`            |
-| Windows | `COM3`                    |
+| OS      | Example               |
+| ------- | --------------------- |
+| macOS   | `/dev/cu.usbmodem101` |
+| Linux   | `/dev/ttyACM0`        |
+| Windows | `COM3`                |
 
 ## ✨ Features
 
-| Module               | Description                                                       |
-| -------------------- | ----------------------------------------------------------------- |
-| Latency test         | High-precision roundtrip latency with P95 statistics              |
-| Baud rate sweep      | Automated sweep across multiple baud rates                        |
-| Stress test          | Five configurable scenarios (echo burst, mixed commands, etc.)    |
-| Command mode         | Interactive hex command sending with real-time response display   |
-| Status mode          | Live statistics and FreeRTOS task performance monitoring          |
-| Regression test      | Automated echo-command validation                                 |
-| Visualize results    | Boxplot, histogram, controller health, and error counter charts   |
-| Keypad & ADC monitor | Real-time sparkline display of ADC channels and keypad events     |
+| Module               | Description                                                     |
+| -------------------- | --------------------------------------------------------------- |
+| Latency test         | High-precision roundtrip latency with P95 statistics            |
+| Baud rate sweep      | Automated sweep across multiple baud rates                      |
+| Stress test          | Five configurable scenarios (echo burst, mixed commands, etc.)  |
+| Command mode         | Interactive hex command sending with real-time response display |
+| Status mode          | Live statistics and FreeRTOS task performance monitoring        |
+| Regression test      | Automated echo-command validation                               |
+| Visualize results    | Boxplot, histogram, controller health, and error counter charts |
+| Keypad & ADC monitor | Real-time sparkline display of ADC channels and keypad events   |
 
 **Protocol stack:** COBS framing · XOR checksum · hardware RTS/CTS flow control · multi-threaded read/write
 
@@ -107,15 +107,15 @@ Measures roundtrip echo latency across configurable iterations and sample counts
 
 **Interactive prompts (7 steps):**
 
-| # | Parameter | Default |
-|---|-----------|---------|
-| 1 | Number of test iterations | 5 |
-| 2 | Message length (6–10 bytes) | 10 |
-| 3 | Min wait between samples (ms) | 0 |
-| 4 | Max wait between samples (ms) | 100 |
-| 5 | Samples per iteration | 255 |
-| 6 | Wait between iterations (s) | 3 |
-| 7 | Enable jitter | false |
+| #   | Parameter                     | Default |
+| --- | ----------------------------- | ------- |
+| 1   | Number of test iterations     | 5       |
+| 2   | Message length (6–10 bytes)   | 10      |
+| 3   | Min wait between samples (ms) | 0       |
+| 4   | Max wait between samples (ms) | 100     |
+| 5   | Samples per iteration         | 255     |
+| 6   | Wait between iterations (s)   | 3       |
+| 7   | Enable jitter                 | false   |
 
 Results are saved to `test_results/{timestamp}_output.json` with latency samples, avg/min/max/P95, dropped message count, and bitrate.
 
@@ -129,12 +129,12 @@ Sweeps through a list of baud rates and measures echo latency at each rate.
 
 **Interactive prompts (4 steps):**
 
-| # | Parameter | Default |
-|---|-----------|---------|
-| 1 | Use default baud rates? | True |
-| 2 | Samples per baud rate | 255 |
-| 3 | Wait after each burst (s) | 3 |
-| 4 | Message length (6–10 bytes) | 10 |
+| #   | Parameter                   | Default |
+| --- | --------------------------- | ------- |
+| 1   | Use default baud rates?     | True    |
+| 2   | Samples per baud rate       | 255     |
+| 3   | Wait after each burst (s)   | 3       |
+| 4   | Message length (6–10 bytes) | 10      |
 
 Default baud rates: `[9600, 57600, 115200, 230400, 460800, 921600]`
 
@@ -142,13 +142,13 @@ Default baud rates: `[9600, 57600, 115200, 230400, 460800, 921600]`
 
 Runs five automated scenarios in sequence (or individually) with pass/fail verdicts:
 
-| Scenario | Profile | Messages | Key threshold |
-|---|---|---|---|
-| `echo_burst` | Echo only | 500 | Drop ratio < 0.1 % · P95 < 50 ms |
-| `mixed_command_burst` | Echo + status | 400 | Drop ratio < 0.5 % · P95 < 100 ms |
-| `status_poll_storm` | Status only | 200 | Queue send errors = 0 |
-| `baud_flip` | Echo at each baud | 5 per rate | 0 % drop · recovery < 3 s |
-| `noise_and_recovery` | Noise injection | 10 | Full recovery · P95 < 2 000 ms |
+| Scenario              | Profile           | Messages   | Key threshold                     |
+| --------------------- | ----------------- | ---------- | --------------------------------- |
+| `echo_burst`          | Echo only         | 500        | Drop ratio < 0.1 % · P95 < 50 ms  |
+| `mixed_command_burst` | Echo + status     | 400        | Drop ratio < 0.5 % · P95 < 100 ms |
+| `status_poll_storm`   | Status only       | 200        | Queue send errors = 0             |
+| `baud_flip`           | Echo at each baud | 5 per rate | 0 % drop · recovery < 3 s         |
+| `noise_and_recovery`  | Noise injection   | 10         | Full recovery · P95 < 2 000 ms    |
 
 A JSON report is written to `test_results/{run_id}_stress.json` after each run. A Rich summary table is printed to the terminal.
 
@@ -167,16 +167,16 @@ Polls and displays FreeRTOS statistics and task performance in Rich tables.
 
 **Available actions:**
 
-| Key | Action |
-|-----|--------|
-| 1 | Request statistics status update |
-| 2 | Request task status update |
-| 3 | Refresh display |
-| 4 | Exit |
+| Key | Action                           |
+| --- | -------------------------------- |
+| 1   | Request statistics status update |
+| 2   | Request task status update       |
+| 3   | Refresh display                  |
+| 4   | Exit                             |
 
 **Statistics monitored:** queue send/receive errors, checksum errors, buffer overflows, unknown commands, bytes sent/received.
 
-**Tasks monitored:** `cdc_task`, `cdc_write_task`, `uart_event_task`, `led_status_task`, `decode_reception_task`, `process_outbound_task`, `adc_read_task`, `keypad_task`, `encoder_read_task`, `idle_task` (system/heap info).
+**Tasks monitored:** `cdc_task`, `cdc_write_task`, `uart_event_task`, `led_status_task`, `decode_reception_task`, `process_outbound_task`, `adc_read_task`, `keypad_task` (includes rotary encoder), `idle_task` (system/heap info).
 
 ### 8. Keypad & ADC Monitor
 
@@ -184,21 +184,21 @@ Passively monitors incoming keypad and ADC frames in real-time without sending a
 
 **ADC panel** — one row per active channel:
 
-| Column | Detail |
-|--------|--------|
-| Ch | Channel number (0–15) |
-| Last Value | Most recent 12-bit ADC reading (0–4095), colour-coded green / yellow / red |
-| Trend | Unicode sparkline `▁▂▃▄▅▆▇█` of the last 10 values |
-| Last Updated | UTC timestamp of the most recent sample |
+| Column       | Detail                                                                     |
+| ------------ | -------------------------------------------------------------------------- |
+| Ch           | Channel number (0–15)                                                      |
+| Last Value   | Most recent 12-bit ADC reading (0–4095), colour-coded green / yellow / red |
+| Trend        | Unicode sparkline `▁▂▃▄▅▆▇█` of the last 10 values                         |
+| Last Updated | UTC timestamp of the most recent sample                                    |
 
 **Keypad events panel** — rolling log of the last 20 press/release events, newest first:
 
-| Column | Detail |
-|--------|--------|
-| # | Entry number (1 = most recent) |
-| Time | UTC timestamp (HH:MM:SS.mmm) |
-| Col / Row | Matrix coordinates |
-| State | `PRESSED` (green) or `RELEASED` (dim) |
+| Column    | Detail                                |
+| --------- | ------------------------------------- |
+| #         | Entry number (1 = most recent)        |
+| Time      | UTC timestamp (HH:MM:SS.mmm)          |
+| Col / Row | Matrix coordinates                    |
+| State     | `PRESSED` (green) or `RELEASED` (dim) |
 
 Press **ENTER** to exit back to the main menu.
 
@@ -209,12 +209,12 @@ Press **ENTER** to exit back to the main menu.
 
 Browse JSON files from `test_results/` (paginated, 10 per page) and choose a plot type:
 
-| Key | Plot |
-|-----|------|
-| 1 | Boxplot with dropped-message overlay |
-| 2 | Latency histogram with P95 marker |
-| 3 | Controller health trends |
-| 4 | Error counter details (stacked bar + heatmap) |
+| Key | Plot                                          |
+| --- | --------------------------------------------- |
+| 1   | Boxplot with dropped-message overlay          |
+| 2   | Latency histogram with P95 marker             |
+| 3   | Controller health trends                      |
+| 4   | Error counter details (stacked bar + heatmap) |
 
 Stress run JSON files (`*_stress.json`) are automatically routed to a dedicated three-panel visualization (drop ratio · P95 latency · error counters per scenario).
 
@@ -238,13 +238,13 @@ XOR over all payload bytes (excluding the checksum byte itself).
 
 ### Commands
 
-| Command                   | Value | Description            |
-| ------------------------- | ----- | ---------------------- |
-| `ECHO_COMMAND`            | 20    | Echo test              |
-| `KEY_COMMAND`             | 4     | Keypad event           |
-| `ANALOG_COMMAND`          | 3     | ADC reading            |
-| `STATISTICS_STATUS_COMMAND` | 23 | System statistics poll |
-| `TASK_STATUS_COMMAND`     | 24    | FreeRTOS task poll     |
+| Command                     | Value | Description            |
+| --------------------------- | ----- | ---------------------- |
+| `ECHO_COMMAND`              | 20    | Echo test              |
+| `KEY_COMMAND`               | 4     | Keypad event           |
+| `ANALOG_COMMAND`            | 3     | ADC reading            |
+| `STATISTICS_STATUS_COMMAND` | 23    | System statistics poll |
+| `TASK_STATUS_COMMAND`       | 24    | FreeRTOS task poll     |
 
 ## 🛠️ Development
 
