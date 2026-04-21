@@ -74,7 +74,7 @@ TASK_CORE_AFFINITY: dict[str, int] = {
     "cdc_task": 0,
     "cdc_write_task": 0,
     "uart_event_task": 0,
-    "led_status_task": 0,
+    "led_status_task": 1,
     "decode_reception_task": 1,
     "process_outbound_task": 1,
     "adc_read_task": 1,

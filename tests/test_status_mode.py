@@ -319,14 +319,14 @@ def test_display_task_status_shows_computed_totals(
     sm._display_task_status()
     out = capsys.readouterr().out
 
-    # Core 0 = cdc + cdc_write + uart + led = 1M + 0.5M + 2M + 0.1M = 3_600_000
-    # formatted as "3,600,000.000"
-    assert "3,600,000.000" in out
+    # Core 0 = cdc + cdc_write + uart = 1M + 0.5M + 2M = 3_500_000
+    # formatted as "3,500,000.000"
+    assert "3,500,000.000" in out
 
-    # Core 1 = decode + process + adc + keypad
-    # = 8M + 7M + 5M + 6M = 26_000_000
-    # formatted as "26,000,000.000"
-    assert "26,000,000.000" in out
+    # Core 1 = led + decode + process + adc + keypad
+    # = 0.1M + 8M + 7M + 5M + 6M = 26_100_000
+    # formatted as "26,100,000.000"
+    assert "26,100,000.000" in out
 
     # Heap info from idle_task slot should appear
     assert "Min free heap" in out
