@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SignalBridge Test Suite is a Python application for testing a SignalBridge embedded controller (Raspberry Pi Pico). It communicates over UART using COBS framing and XOR checksums, providing latency measurement, baud rate sweep testing, interactive command mode, system status monitoring, regression testing, and result visualization.
+SignalBridge Test Suite is a Python application for testing a SignalBridge embedded controller (Raspberry Pi Pico). It communicates over UART using COBS framing and XOR checksums, providing latency measurement, baud rate sweep testing, stress testing with deterministic fault-frame injection, interactive command mode, system status monitoring, regression testing, keypad & ADC monitoring, and result visualization.
 
 ## Common Commands
 
@@ -29,7 +29,7 @@ uv run ruff check src/
 uv run ruff check --fix src/
 uv run ruff format src/
 
-# Mutation testing (targets: all possible files)
+# Mutation testing (mutates all files under src/ per setup.cfg)
 uv run mutmut run
 ```
 
@@ -53,4 +53,4 @@ All code modifications and new feature implementations must strictly adhere to t
 - `tests/conftest.py` forces matplotlib `Agg` backend for headless CI
 - Thread safety: `_status_lock` (threading.Lock) guards shared statistics/task dicts in `BaseTest`
 - Test results written to `test_results/` as JSON
-- Pre-commit hooks run: ruff lint+format, pytest, mutmut
+- Pre-commit hooks run ruff lint+format and pytest on every commit. `mutmut` is a manual-stage hook (see `.pre-commit-config.yaml`) invoked on demand with `pre-commit run mutmut --hook-stage manual` or `uv run mutmut run`.

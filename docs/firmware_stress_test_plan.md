@@ -1,5 +1,21 @@
 # SignalBridge Firmware Stress-Test Improvement Plan
 
+## 0) Current implementation status
+
+| Phase | Scope | Status |
+|---|---|---|
+| Phase 1 | Stress runner + five Phase-1 scenarios | **Done** — `src/stress_test.py`, `src/stress_config.py`, `src/stress_evaluator.py`, `src/stress_reporter.py` |
+| Phase 2 | Protocol/parser fault injection | **Done (deterministic set)** — `src/fault_frames.py` plus the eight `fi_*` scenarios registered in `stress_config.default_stress_config()`. General property-based fuzzing is not yet implemented. |
+| Phase 3 | Endurance / soak runner | **Not started** — no 1h/8h/24h runner, no trend/drift detector. |
+| Phase 4 | Deterministic SLO budgets | **Partial** — per-scenario thresholds are hardcoded in `stress_config.ScenarioThresholds`; externalised JSON/YAML SLO versioning per hardware profile is still open. |
+| Phase 5 | CI / lab pipeline split | **Not started** — no HIL runner, no nightly job, no baseline trend comparison. |
+
+The rest of this document is the original roadmap and remains the reference
+for the outstanding phases. Items that have already been delivered are
+cross-referenced from the table above.
+
+---
+
 ## 1) Firmware behavior this suite must validate
 
 Based on the controller firmware docs and command map, the target device is a dual-core RP2040 system running FreeRTOS SMP with COBS-framed UART/USB communications, 5-bit command IDs, and explicit diagnostics counters for parser, queue, checksum, and buffer failures. The firmware has both functional I/O commands and diagnostic/system commands (`PC_ECHO_CMD`, `PC_ERROR_STATUS_CMD`, `PC_TASK_STATUS_CMD`, etc.), and it exposes enough telemetry to validate robustness under load, not just nominal correctness.
@@ -138,11 +154,19 @@ Budgets should be versioned in a config file (JSON/YAML) per hardware profile.
 
 ### A. New code/components
 
+Delivered (keep for context — do not re-open):
+
 - `src/stress_test.py`: orchestrates scenarios and aggregates telemetry.
-- `src/frame_fuzzer.py`: deterministic malformed frame generator.
-- `src/stress_config.py`: typed scenario + threshold config loader.
-- `tests/test_frame_fuzzer.py`: property and edge tests for malformed-frame generation.
-- `tests/test_stress_evaluator.py`: threshold evaluator and verdict logic.
+- `src/stress_config.py`: typed scenario + threshold config schema and defaults.
+- `src/stress_evaluator.py`: per-scenario threshold evaluator and verdict logic.
+- `src/stress_reporter.py`: JSON report writer + Rich summary table.
+- `src/fault_frames.py`: deterministic malformed-frame generator (eight named fault profiles).
+- `tests/test_stress_test.py`, `tests/test_stress_config.py`, `tests/test_stress_evaluator.py`, `tests/test_stress_reporter.py`, `tests/test_fault_frames.py`: corresponding unit coverage.
+
+Still outstanding:
+
+- Property-based / randomised frame fuzzer complementing the deterministic `fault_frames.py` set.
+- External (JSON/YAML) SLO config loader to replace the hardcoded `ScenarioThresholds` defaults, versioned per hardware profile.
 
 ### B. Improve existing modes
 
