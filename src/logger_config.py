@@ -8,6 +8,7 @@ import logging.config
 import logging.handlers
 import os
 import queue
+import sys
 from pathlib import Path
 
 
@@ -41,6 +42,50 @@ def setup_logging(
         logging.basicConfig(level=default_level)
 
     _install_queue_dispatch()
+    _rebind_stdout_handlers()
+
+
+class _LateBoundStdout:
+    """
+    File-like proxy that resolves ``sys.stdout`` on every call.
+
+    Lets ``alive_progress``'s stdout hook intercept log writes so records
+    render above the pinned progress bar instead of corrupting its position.
+    """
+
+    def write(self, data: str) -> int:
+        """Forward ``data`` to the current ``sys.stdout``."""
+        return sys.stdout.write(data)
+
+    def flush(self) -> None:
+        """Flush the current ``sys.stdout``."""
+        sys.stdout.flush()
+
+    def __getattr__(self, name: str) -> object:
+        """Forward any other attribute access to the current ``sys.stdout``."""
+        return getattr(sys.stdout, name)
+
+
+def _rebind_stdout_handlers() -> None:
+    """Swap captured ``sys.stdout`` streams for a late-binding proxy."""
+    proxy = _LateBoundStdout()
+    targets: list[logging.Handler] = []
+    if _Dispatch.listener is not None:
+        targets.extend(_Dispatch.listener.handlers)
+    for logger in _collect_configured_loggers():
+        targets.extend(logger.handlers)
+
+    seen: set[int] = set()
+    for handler in targets:
+        if id(handler) in seen:
+            continue
+        seen.add(id(handler))
+        if (
+            isinstance(handler, logging.StreamHandler)
+            and not isinstance(handler, logging.FileHandler)
+            and getattr(handler, "stream", None) is sys.stdout
+        ):
+            handler.setStream(proxy)
 
 
 def _collect_configured_loggers() -> list[logging.Logger]:
