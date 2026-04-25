@@ -336,3 +336,21 @@ def test_execute_baud_test_keyboard_interrupt() -> None:
     ):
         # Should not raise; the function catches KeyboardInterrupt internally
         tester.execute_baud_test()
+
+
+def test_execute_baud_test_with_options_calls_baud_rate_test() -> None:
+    """execute_baud_test_with_options delegates to baud_rate_test."""
+    tester = BaudRateTest(Mock(spec=SerialInterface))
+    with patch.object(tester, "baud_rate_test") as mock_sweep:
+        tester.execute_baud_test_with_options(
+            baud_rates=[9600, 115200],
+            samples=12,
+            wait_time=0.2,
+            length=8,
+        )
+    mock_sweep.assert_called_once_with(
+        baud_rates=[9600, 115200],
+        samples=12,
+        wait_time=0.2,
+        length=8,
+    )

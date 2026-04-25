@@ -41,6 +41,27 @@ uv sync
 uv run src/main.py
 ```
 
+### Headless execution (for .NET/service orchestration)
+
+Use the non-interactive runner when invoking the suite from another process:
+
+```bash
+uv run src/runner_cli.py --mode latency --port /dev/ttyACM0 --baudrate 921600
+uv run src/runner_cli.py --mode baud_sweep --baud-rates 115200,230400,921600
+uv run src/runner_cli.py --mode stress --scenarios echo_burst,mixed_command_burst
+uv run src/runner_cli.py --mode regression --output-json artifacts/regression.json
+uv run src/runner_cli.py --mode stress --feedback-stdout --feedback-interval-ms 250
+uv run src/runner_cli.py --mode latency --feedback-jsonl artifacts/progress.jsonl
+```
+
+The runner prints a JSON summary to stdout and can optionally write it to `--output-json`.
+When a mode generates a report file, the summary includes `result_file` with the absolute path.
+For real-time integration (e.g. .NET), enable `--feedback-stdout` to receive NDJSON progress
+events (`run_started`, `heartbeat`, `mode_started`, `stress_progress`, `mode_finished`,
+`run_finished`) or write them to a file using `--feedback-jsonl`.
+Additionally, each runner invocation always writes a final envelope JSON file to `test_results/`
+and exposes that path as `summary_file` in the final summary payload.
+
 ### Serial Port Configuration
 
 Edit `src/const.py` to match your device:

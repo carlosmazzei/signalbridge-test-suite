@@ -197,3 +197,23 @@ class BaudRateTest(BaseTest):
             logger.info("Baud rate sweep test ended")
         except KeyboardInterrupt:
             logger.info("Test interrupted by user")
+
+    def execute_baud_test_with_options(
+        self,
+        *,
+        baud_rates: list[int],
+        samples: int = DEFAULT_SAMPLES,
+        wait_time: float = DEFAULT_WAIT_TIME,
+        length: int = DEFAULT_MESSAGE_LENGTH,
+    ) -> None:
+        """Run baud sweep non-interactively using explicit arguments."""
+        if self.ser is None:
+            logger.info("No serial port found. Quitting test.")
+            return
+
+        self.baud_rate_test(
+            baud_rates=baud_rates,
+            samples=samples,
+            wait_time=wait_time,
+            length=length,
+        )
