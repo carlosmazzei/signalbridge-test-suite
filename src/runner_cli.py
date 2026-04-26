@@ -107,24 +107,77 @@ def _make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="runner_cli",
         description=(
-            "Run SignalBridge tests in headless mode for external orchestration."
+            "Run SignalBridge tests in headless mode for external orchestration.\n"
+            "Modes that already generate detailed reports (latency/baud_sweep/stress)\n"
+            "continue writing those files under test_results/."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  uv run src/runner_cli.py --mode latency "
+            "--port /dev/ttyACM0 --baudrate 921600\n"
+            "  uv run src/runner_cli.py --mode stress "
+            "--scenarios echo_burst --feedback-stdout\n"
+            "  uv run src/runner_cli.py --mode baud_sweep "
+            "--baud-rates 115200,230400,921600\n"
+            "\n"
+            "Output behavior:\n"
+            "  * Without --feedback-stdout: stdout emits only one "
+            "final JSON summary line.\n"
+            "  * With --feedback-stdout: stdout emits NDJSON progress events.\n"
+            "  * Every run writes summary_file in test_results/.\n"
+            "  * result_file points to the detailed mode artifact when available."
+        ),
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+
+    required_group = parser.add_argument_group("Required")
+    required_group.add_argument(
+        "--mode",
+        required=True,
+        choices=_MODES,
+        help=(
+            "Test mode to execute.\n"
+            "latency|baud_sweep|stress generate detailed result_file.\n"
+            "regression performs validation without a mode-specific detail file."
         ),
     )
-    parser.add_argument("--mode", required=True, choices=_MODES)
-    parser.add_argument("--port", default=PORT_NAME)
-    parser.add_argument("--baudrate", default=BAUDRATE, type=int)
-    parser.add_argument("--timeout", default=TIMEOUT, type=float)
+
+    serial_group = parser.add_argument_group("Serial connection")
+    serial_group.add_argument(
+        "--port",
+        default=PORT_NAME,
+        help=f"Serial device path (default: {PORT_NAME}).",
+    )
+    serial_group.add_argument(
+        "--baudrate",
+        default=BAUDRATE,
+        type=int,
+        help=f"UART baud rate (default: {BAUDRATE}).",
+    )
+    serial_group.add_argument(
+        "--timeout",
+        default=TIMEOUT,
+        type=float,
+        help=f"Serial read timeout in seconds (default: {TIMEOUT}).",
+    )
     parser.add_argument(
         "--output-json",
         default="",
-        help="Optional path for writing a final summary JSON document.",
+        help=(
+            "Optional path for writing the final summary JSON.\n"
+            "Independent of this option, summary_file is always "
+            "written in test_results/."
+        ),
     )
 
     # Live feedback options
     parser.add_argument(
         "--feedback-stdout",
         action="store_true",
-        help="Emit structured progress events as NDJSON to stdout.",
+        help=(
+            "Emit structured progress events as NDJSON to stdout.\n"
+            "When enabled, stdout no longer emits only the single final summary line."
+        ),
     )
     parser.add_argument(
         "--feedback-jsonl",
@@ -139,30 +192,70 @@ def _make_parser() -> argparse.ArgumentParser:
     )
 
     # Shared test knobs
-    parser.add_argument("--samples", default=255, type=int)
-    parser.add_argument("--message-length", default=10, type=int)
-    parser.add_argument("--wait-time", default=3.0, type=float)
+    shared_group = parser.add_argument_group("Shared test options")
+    shared_group.add_argument(
+        "--samples",
+        default=255,
+        type=int,
+        help="Number of samples/messages where supported (default: 255).",
+    )
+    shared_group.add_argument(
+        "--message-length",
+        default=10,
+        type=int,
+        help="Payload length for modes that send echo traffic (default: 10).",
+    )
+    shared_group.add_argument(
+        "--wait-time",
+        default=3.0,
+        type=float,
+        help=(
+            "Post-burst wait in seconds; also used as minimum regression settle delay."
+        ),
+    )
 
     # Latency mode options
-    parser.add_argument("--num-times", default=5, type=int)
-    parser.add_argument("--max-wait", default=0.1, type=float)
-    parser.add_argument("--min-wait", default=0.0, type=float)
-    parser.add_argument("--jitter", action="store_true")
+    latency_group = parser.add_argument_group("Latency mode options")
+    latency_group.add_argument(
+        "--num-times",
+        default=5,
+        type=int,
+        help="Number of latency iterations (default: 5).",
+    )
+    latency_group.add_argument(
+        "--max-wait",
+        default=0.1,
+        type=float,
+        help="Maximum inter-message delay in seconds (default: 0.1).",
+    )
+    latency_group.add_argument(
+        "--min-wait",
+        default=0.0,
+        type=float,
+        help="Minimum inter-message delay in seconds (default: 0.0).",
+    )
+    latency_group.add_argument(
+        "--jitter",
+        action="store_true",
+        help="Enable random delay jitter inside latency mode.",
+    )
 
     # Baud sweep mode options
-    parser.add_argument(
+    baud_group = parser.add_argument_group("Baud sweep mode options")
+    baud_group.add_argument(
         "--baud-rates",
         default="",
         help="Comma-separated baud rates used by baud_sweep mode.",
     )
 
     # Stress mode options
-    parser.add_argument(
+    stress_group = parser.add_argument_group("Stress mode options")
+    stress_group.add_argument(
         "--stress-config",
         default="",
         help="Optional JSON config file loaded via stress_config.load_stress_config.",
     )
-    parser.add_argument(
+    stress_group.add_argument(
         "--scenarios",
         default="",
         help="Comma-separated scenario names to run in stress mode.",

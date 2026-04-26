@@ -11,6 +11,7 @@ from runner_cli import (
     FeedbackConfig,
     _extract_tester_counters,
     _latest_new_file,
+    _make_parser,
     _parse_baud_rates,
     _parse_scenarios,
     _write_runner_summary_file,
@@ -93,3 +94,12 @@ def test_write_runner_summary_file_creates_envelope(tmp_path: Path) -> None:
     data = json.loads(Path(out_path).read_text(encoding="utf-8"))
     assert data["format_type"] == "runner_summary"
     assert data["payload"]["mode"] == "latency"
+
+
+def test_parser_help_contains_examples_and_output_notes() -> None:
+    """CLI help includes examples and output behavior guidance."""
+    parser = _make_parser()
+    help_text = parser.format_help()
+    assert "Examples:" in help_text
+    assert "Output behavior:" in help_text
+    assert "--feedback-stdout" in help_text
