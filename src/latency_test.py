@@ -245,3 +245,29 @@ class LatencyTest(BaseTest):
             logger.info("Test ended")
         except KeyboardInterrupt:
             logger.info("Test interrupted by user")
+
+    def execute_test_with_options(  # noqa: PLR0913  # Explicit CLI parity
+        self,
+        *,
+        num_times: int = DEFAULT_NUM_TIMES,
+        max_wait: float = DEFAULT_MAX_WAIT,
+        min_wait: float = DEFAULT_MIN_WAIT,
+        wait_time: float = DEFAULT_WAIT_TIME,
+        samples: int = DEFAULT_SAMPLES,
+        length: int = DEFAULT_MESSAGE_LENGTH,
+        jitter: bool = False,
+    ) -> None:
+        """Run the latency test non-interactively using explicit arguments."""
+        if self.ser is None:
+            logger.info("No serial port found. Quitting test.")
+            return
+
+        self.main_test(
+            num_times=num_times,
+            max_wait=max_wait,
+            min_wait=min_wait,
+            wait_time=wait_time,
+            samples=samples,
+            length=length,
+            jitter=jitter,
+        )

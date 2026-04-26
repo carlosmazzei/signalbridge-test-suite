@@ -680,3 +680,59 @@ class TestFaultInjection:
         tester = self._make_fi_tester(mock_serial, [b"\x01\x00"])
         result = tester._run_fault_injection(tester.config.scenarios[0])
         assert isinstance(result, ScenarioResult)
+
+
+def test_resolve_selected_scenarios_filters_by_name(mock_serial: Mock) -> None:
+    """_resolve_selected_scenarios keeps only requested scenario names."""
+    tester = _make_tester(mock_serial, default_stress_config())
+    selected = tester._resolve_selected_scenarios(["echo_burst", "fi_bad_checksum"])
+    assert [cfg.name for cfg in selected] == ["echo_burst", "fi_bad_checksum"]
+
+
+def test_execute_test_with_options_uses_selected_scenarios(mock_serial: Mock) -> None:
+    """execute_test_with_options runs only provided scenarios."""
+    tester = _make_tester(mock_serial, default_stress_config())
+    with (
+        patch.object(tester, "_run_scenario") as mock_run,
+        patch("stress_test.write_json_report"),
+        patch("stress_test.print_summary"),
+    ):
+        mock_result = Mock()
+        mock_result.verdict = "PASS"
+        mock_run.return_value = mock_result
+        tester.execute_test_with_options(scenario_names=["echo_burst"])
+    mock_run.assert_called_once()
+    assert mock_run.call_args.args[0].name == "echo_burst"
+
+
+def test_execute_test_with_options_emits_progress_events(mock_serial: Mock) -> None:
+    """StressTest emits scenario start/finish events through callback."""
+    events: list[dict[str, Any]] = []
+    tester = StressTest(
+        mock_serial,
+        default_stress_config(),
+        progress_callback=lambda evt: events.append(evt),
+    )
+    tester._request_status_snapshot = Mock(
+        return_value={
+            "statistics": {},
+            "tasks": {},
+            "received": {"statistics": 0, "tasks": 0},
+            "complete": False,
+        }
+    )
+    tester._calculate_status_delta = Mock(return_value={"statistics": {}, "tasks": {}})
+    with (
+        patch.object(tester, "_run_scenario") as mock_run,
+        patch("stress_test.write_json_report"),
+        patch("stress_test.print_summary"),
+    ):
+        mock_result = Mock()
+        mock_result.verdict = "PASS"
+        mock_result.drop_ratio = 0.0
+        mock_result.p95_ms = 1.0
+        mock_run.return_value = mock_result
+        tester.execute_test_with_options(scenario_names=["echo_burst"])
+
+    assert any(evt["event"] == "scenario_started" for evt in events)
+    assert any(evt["event"] == "scenario_finished" for evt in events)

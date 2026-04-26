@@ -38,7 +38,7 @@ from stress_reporter import print_summary, write_json_report
 from ui_console import console
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 from base_test import STATISTICS_ITEMS, TASK_ITEMS
 
@@ -67,12 +67,23 @@ class StressTest(BaseTest):
     """Orchestrate all Phase 1 stress scenarios against the firmware."""
 
     def __init__(
-        self, ser: SerialInterface, config: StressConfig | None = None
+        self,
+        ser: SerialInterface,
+        config: StressConfig | None = None,
+        *,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         """Initialise with a serial interface and optional config (defaults apply)."""
         super().__init__(ser)
         self.config: StressConfig = config or default_stress_config()
         self._scenario_results: list[ScenarioResult] = []
+        self._progress_callback = progress_callback
+
+    def _emit_progress(self, event: str, **payload: Any) -> None:
+        """Invoke progress callback if configured."""
+        if not self._progress_callback:
+            return
+        self._progress_callback({"event": event, **payload})
 
     # ------------------------------------------------------------------
     # Public interface (wired by ApplicationManager)
@@ -106,6 +117,24 @@ class StressTest(BaseTest):
         logger.info("Invalid choice. Running ALL scenarios.")
         return self.config.scenarios
 
+    def _resolve_selected_scenarios(
+        self,
+        scenario_names: Sequence[str] | None = None,
+    ) -> list[ScenarioConfig]:
+        """Resolve scenario selection by optional name list."""
+        if not scenario_names:
+            return self.config.scenarios
+
+        wanted = {name.strip() for name in scenario_names if name.strip()}
+        selected = [cfg for cfg in self.config.scenarios if cfg.name in wanted]
+        if not selected:
+            logger.warning(
+                "No matching stress scenarios found for %s. Running all scenarios.",
+                sorted(wanted),
+            )
+            return self.config.scenarios
+        return selected
+
     def execute_test(self) -> StressRunResult | None:
         """Run configured scenarios interactively and return an aggregated result."""
         if self.ser is None or not self.ser.is_open():
@@ -126,11 +155,86 @@ class StressTest(BaseTest):
         )
 
         self._scenario_results = []
-        for cfg in selected_scenarios:
+        total = len(selected_scenarios)
+        for idx, cfg in enumerate(selected_scenarios, start=1):
+            self._emit_progress(
+                "scenario_started",
+                scenario_name=cfg.name,
+                scenario_index=idx,
+                total_scenarios=total,
+            )
             logger.info("=== Scenario: %s ===", cfg.name)
             result = self._run_scenario(cfg)
             self._scenario_results.append(result)
             logger.info("Scenario '%s' finished: verdict=%s", cfg.name, result.verdict)
+            self._emit_progress(
+                "scenario_finished",
+                scenario_name=cfg.name,
+                scenario_index=idx,
+                total_scenarios=total,
+                verdict=result.verdict,
+                drop_ratio=result.drop_ratio,
+                p95_ms=result.p95_ms,
+            )
+
+        ended_at = datetime.now(UTC).isoformat()
+        overall = aggregate_verdict(self._scenario_results)
+        run_result = StressRunResult(
+            run_id=self._run_id,
+            port=self.ser.port,
+            baudrate=self.ser.baudrate,
+            started_at=started_at,
+            ended_at=ended_at,
+            scenarios=self._scenario_results,
+            overall_verdict=overall,
+        )
+
+        report_path = write_json_report(run_result, self.config.output_dir)
+        logger.info("JSON report: %s", report_path)
+        print_summary(run_result)
+        return run_result
+
+    def execute_test_with_options(
+        self,
+        *,
+        scenario_names: Sequence[str] | None = None,
+    ) -> StressRunResult | None:
+        """Run configured scenarios non-interactively and return the aggregate."""
+        if self.ser is None or not self.ser.is_open():
+            logger.info("No serial port found. Quitting test.")
+            return None
+
+        selected_scenarios = self._resolve_selected_scenarios(scenario_names)
+
+        started_at = datetime.now(UTC).isoformat()
+        logger.info(
+            "Starting stress run %s — %d scenario(s)",
+            self._run_id,
+            len(selected_scenarios),
+        )
+
+        self._scenario_results = []
+        total = len(selected_scenarios)
+        for idx, cfg in enumerate(selected_scenarios, start=1):
+            self._emit_progress(
+                "scenario_started",
+                scenario_name=cfg.name,
+                scenario_index=idx,
+                total_scenarios=total,
+            )
+            logger.info("=== Scenario: %s ===", cfg.name)
+            result = self._run_scenario(cfg)
+            self._scenario_results.append(result)
+            logger.info("Scenario '%s' finished: verdict=%s", cfg.name, result.verdict)
+            self._emit_progress(
+                "scenario_finished",
+                scenario_name=cfg.name,
+                scenario_index=idx,
+                total_scenarios=total,
+                verdict=result.verdict,
+                drop_ratio=result.drop_ratio,
+                p95_ms=result.p95_ms,
+            )
 
         ended_at = datetime.now(UTC).isoformat()
         overall = aggregate_verdict(self._scenario_results)

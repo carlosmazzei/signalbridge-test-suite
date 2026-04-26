@@ -270,6 +270,30 @@ def test_execute_test_no_serial_logs_and_returns(
     assert "No serial port found. Quitting test." in caplog.text
 
 
+def test_execute_test_with_options_calls_main_test() -> None:
+    """execute_test_with_options delegates to main_test with explicit args."""
+    tester = LatencyTest(Mock(spec=SerialInterface))
+    with patch.object(tester, "main_test") as mock_main:
+        tester.execute_test_with_options(
+            num_times=2,
+            max_wait=0.2,
+            min_wait=0.05,
+            wait_time=1.0,
+            samples=10,
+            length=8,
+            jitter=True,
+        )
+    mock_main.assert_called_once_with(
+        num_times=2,
+        max_wait=0.2,
+        min_wait=0.05,
+        wait_time=1.0,
+        samples=10,
+        length=8,
+        jitter=True,
+    )
+
+
 def test_main_test_collects_and_writes_output() -> None:
     """main_test runs loops, computes bitrate, and writes output via helper."""
     mock_ser = Mock(spec=SerialInterface)
