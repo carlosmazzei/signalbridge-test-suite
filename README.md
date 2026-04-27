@@ -41,6 +41,23 @@ uv sync
 uv run src/main.py
 ```
 
+### Install from PyPI (for external orchestrators)
+
+After publishing to PyPI, install with `pip` in any external program/runtime:
+
+```bash
+pip install signalbridge-test-suite
+signalbridge-test-suite
+signalbridge-runner --mode latency --port /dev/ttyACM0 --baudrate 921600
+```
+
+You can also invoke module entry points directly:
+
+```bash
+python -m main
+python -m runner_cli --mode regression
+```
+
 ### Headless execution (for .NET/service orchestration)
 
 Use the non-interactive runner when invoking the suite from another process:
