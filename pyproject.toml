@@ -43,7 +43,6 @@ dev = [
 [tool.setuptools]
 package-dir = {"" = "src"}
 py-modules = [
-    "__init__",
     "application_manager",
     "base_test",
     "baud_rate_test",
