@@ -12,7 +12,7 @@ dependencies = [
     "pre-commit==4.5.1",
     "pyserial==3.5",
     "rich>=13.9.0",
-    "ruff==0.15.11",
+    "ruff==0.15.12",
 ]
 
 [dependency-groups]
