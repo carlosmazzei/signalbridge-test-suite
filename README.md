@@ -41,17 +41,32 @@ uv sync
 uv run src/main.py
 ```
 
-### Install from PyPI (for external orchestrators)
+### Build/Publish with uv (PyPI)
 
-After publishing to PyPI, install with `pip` in any external program/runtime:
+To keep the workflow 100% in `uv`, build and publish with:
 
 ```bash
-pip install signalbridge-test-suite
+uv build
+uv publish
+```
+
+### Install from PyPI (for external orchestrators)
+
+After publishing to PyPI, install in external runtimes with `uv` (recommended) or `pip`:
+
+```bash
+uv tool install signalbridge-test-suite
 signalbridge-test-suite
 signalbridge-runner --mode latency --port /dev/ttyACM0 --baudrate 921600
 ```
 
-You can also invoke module entry points directly:
+Equivalent `pip` install:
+
+```bash
+pip install signalbridge-test-suite
+```
+
+You can also invoke module entry points directly (for embedded invocations):
 
 ```bash
 python -m main
