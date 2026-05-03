@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -912,16 +912,14 @@ wheels = [
 [[package]]
 name = "signalbridge-test-suite"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "alive-progress" },
     { name = "cobs" },
     { name = "matplotlib" },
     { name = "numpy" },
-    { name = "pre-commit" },
     { name = "pyserial" },
     { name = "rich" },
-    { name = "ruff" },
 ]
 
 [package.dev-dependencies]
@@ -929,10 +927,12 @@ dev = [
     { name = "coverage" },
     { name = "hypothesis" },
     { name = "mutmut" },
+    { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-timeout" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -941,10 +941,8 @@ requires-dist = [
     { name = "cobs", specifier = "==1.2.2" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "numpy", specifier = ">=2.2.1" },
-    { name = "pre-commit", specifier = "==4.6.0" },
     { name = "pyserial", specifier = "==3.5" },
     { name = "rich", specifier = ">=13.9.0" },
-    { name = "ruff", specifier = "==0.15.12" },
 ]
 
 [package.metadata.requires-dev]
@@ -952,10 +950,12 @@ dev = [
     { name = "coverage", specifier = ">=7.5" },
     { name = "hypothesis", specifier = ">=6.112.0" },
     { name = "mutmut", specifier = ">=3.2.2" },
+    { name = "pre-commit", specifier = "==4.6.0" },
     { name = "pytest", specifier = ">=8.3.3" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "pytest-timeout", specifier = ">=2.3.1" },
+    { name = "ruff", specifier = "==0.15.12" },
 ]
 
 [[package]]

@@ -41,6 +41,38 @@ uv sync
 uv run src/main.py
 ```
 
+### Build/Publish with uv (PyPI)
+
+To keep the workflow 100% in `uv`, build and publish with:
+
+```bash
+uv build
+uv publish
+```
+
+### Install from PyPI (for external orchestrators)
+
+After publishing to PyPI, install in external runtimes with `uv` (recommended) or `pip`:
+
+```bash
+uv tool install signalbridge-test-suite
+signalbridge-test-suite
+signalbridge-runner --mode latency --port /dev/ttyACM0 --baudrate 921600
+```
+
+Equivalent `pip` install:
+
+```bash
+pip install signalbridge-test-suite
+```
+
+You can also invoke module entry points directly (for embedded invocations):
+
+```bash
+python -m main
+python -m runner_cli --mode regression
+```
+
 ### Headless execution (for .NET/service orchestration)
 
 Use the non-interactive runner when invoking the suite from another process:
