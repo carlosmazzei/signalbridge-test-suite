@@ -8,7 +8,8 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                     main.py                         │  Entry point
+│            main.py  ·  runner_cli.py                 │  Entry points
+│       (interactive menu)  (non-interactive CLI)     │
 ├─────────────────────────────────────────────────────┤
 │               ApplicationManager                    │  Orchestration
 │   (Mode enum, ModuleConfig, menu, message routing)  │
@@ -219,6 +220,9 @@ These constants are class attributes on `SerialInterface` and must not be duplic
 
 ## 9. Code Conventions
 
+> This section is the **single source of truth** for code conventions. `README.md`
+> and `CLAUDE.md` keep only short summaries that link back here.
+
 ### Python version and tooling
 
 - Target: **Python 3.13**. Use `from __future__ import annotations` at the top of every module to enable PEP 563 postponed evaluation of annotations.
@@ -288,7 +292,8 @@ def serial_interface():
 ## 11. Dependency Graph (import direction)
 
 ```
-main.py
+main.py            (interactive entry point)
+runner_cli.py      (non-interactive entry point — CI / external orchestration)
 └── application_manager.py
     ├── serial_interface.py ──► checksum.py
     │                       ──► logger_config.py

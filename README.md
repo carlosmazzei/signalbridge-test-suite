@@ -233,6 +233,25 @@ Polls and displays FreeRTOS statistics and task performance in Rich tables.
 
 **Tasks monitored:** `cdc_task`, `cdc_write_task`, `uart_event_task`, `led_status_task`, `decode_reception_task`, `process_outbound_task`, `adc_read_task`, `keypad_task` (includes rotary encoder), `idle_task` (system/heap info).
 
+### 7. Visualize Test Results
+
+Browse JSON files from `test_results/` (paginated, 10 per page) and choose a plot type:
+
+| Key | Plot                                          |
+| --- | --------------------------------------------- |
+| 1   | Boxplot with dropped-message overlay          |
+| 2   | Latency histogram with P95 marker             |
+| 3   | Controller health trends                      |
+| 4   | Error counter details (stacked bar + heatmap) |
+
+Stress run JSON files (`*_stress.json`) are automatically routed to a dedicated three-panel visualization (drop ratio · P95 latency · error counters per scenario).
+
+**Example output:**
+
+| Boxplot | Histogram | Controller health |
+| ------- | --------- | ----------------- |
+| ![Latency boxplot with dropped-message overlay](assets/boxplot.png) | ![Latency histogram with P95 marker](assets/histogram.png) | ![Controller health trends](assets/controller_health.png) |
+
 ### 8. Keypad & ADC Monitor
 
 Passively monitors incoming keypad and ADC frames in real-time without sending any commands to the device. The display auto-refreshes at 2 Hz using a live Rich panel.
@@ -259,19 +278,6 @@ Press **ENTER** to exit back to the main menu.
 
 > [!NOTE]
 > The ADC task on the firmware runs continuously, so values update frequently. The keypad panel only appends an entry when a key state changes (press or release).
-
-### 9. Visualize Test Results
-
-Browse JSON files from `test_results/` (paginated, 10 per page) and choose a plot type:
-
-| Key | Plot                                          |
-| --- | --------------------------------------------- |
-| 1   | Boxplot with dropped-message overlay          |
-| 2   | Latency histogram with P95 marker             |
-| 3   | Controller health trends                      |
-| 4   | Error counter details (stacked bar + heatmap) |
-
-Stress run JSON files (`*_stress.json`) are automatically routed to a dedicated three-panel visualization (drop ratio · P95 latency · error counters per scenario).
 
 ## 🔧 Protocol Reference
 
@@ -308,7 +314,8 @@ XOR over all payload bytes (excluding the checksum byte itself).
 ```
 signalbridge-test-suite/
 ├── src/
-│   ├── main.py                # Entry point
+│   ├── main.py                # Entry point (interactive menu)
+│   ├── runner_cli.py          # Non-interactive CLI runner (CI / orchestration)
 │   ├── application_manager.py # Menu loop and module orchestration
 │   ├── base_test.py           # Shared BaseTest infrastructure
 │   ├── latency_test.py        # Latency measurement
@@ -330,13 +337,15 @@ signalbridge-test-suite/
 │   ├── logger_config.py       # Logging setup
 │   └── const.py               # Serial port / folder constants
 ├── tests/                     # pytest test suite
-├── docs/                      # Additional documentation
+├── docs/                      # Documentation (see docs/README.md index)
+│   ├── README.md              # Documentation index
+│   ├── ARCHITECTURE.md        # Authoritative architectural rules
+│   └── firmware_stress_test_plan.md
 ├── test_results/              # JSON output from test runs
 ├── pyproject.toml             # Dependencies and tool config
 ├── ruff.toml                  # Ruff linter/formatter config
 ├── pytest.ini                 # pytest configuration
-├── logging_config.ini         # Logging configuration
-└── ARCHITECTURE.md            # Authoritative architectural rules
+└── logging_config.ini         # Logging configuration
 ```
 
 ### Common Commands
@@ -372,7 +381,7 @@ uv run mutmut run
 
 ### Adding a New Test Mode
 
-1. Subclass `BaseTest` (see `ARCHITECTURE.md` for mandatory patterns):
+1. Subclass `BaseTest` (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for mandatory patterns):
 
    ```python
    # src/my_test.py
@@ -389,13 +398,17 @@ uv run mutmut run
 
 ### Code Conventions
 
-- **Python 3.13** target
-- **ruff** with `select = ["ALL"]` — all lint rules enabled; specific ignores in `ruff.toml`
-- Type hints on all functions and class attributes
-- Thread safety: `_status_lock` (threading.Lock) guards shared dicts in `BaseTest`
-- Tests use pytest-style `assert` with `unittest.mock` for hardware mocking
-- Test results written to `test_results/` as JSON
-- Pre-commit hooks run ruff lint + format and pytest on every commit. `mutmut` is a manual-stage hook (`pre-commit run mutmut --hook-stage manual`) and is not invoked by a plain `git commit`.
+The full, authoritative conventions live in
+[docs/ARCHITECTURE.md §9](docs/ARCHITECTURE.md#9-code-conventions). In short:
+
+- **Python 3.13** target, **ruff** with `select = ["ALL"]` (ignores in `ruff.toml`).
+- Type hints on all functions and class attributes.
+- Thread safety: `_status_lock` (threading.Lock) guards shared dicts in `BaseTest`.
+- Tests use pytest-style `assert` with `unittest.mock` for hardware mocking;
+  results are written to `test_results/` as JSON.
+- Pre-commit hooks run ruff lint + format and pytest on every commit. `mutmut` is
+  a manual-stage hook (`pre-commit run mutmut --hook-stage manual`) and is not
+  invoked by a plain `git commit`.
 
 ## 🚨 Troubleshooting
 
