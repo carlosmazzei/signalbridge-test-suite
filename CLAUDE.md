@@ -8,6 +8,9 @@ SignalBridge Test Suite is a Python application for testing a SignalBridge embed
 
 ## Common Commands
 
+The full command reference (build/publish, headless runner, troubleshooting) lives
+in [README.md](README.md). The essentials:
+
 ```bash
 # Install dependencies
 uv sync
@@ -35,22 +38,20 @@ uv run mutmut run
 
 ## Architecture
 
-**CRITICAL REFERENCE: See [ARCHITECTURE.md](ARCHITECTURE.md) for authoritative architectural rules.**
+**CRITICAL REFERENCE: See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for authoritative architectural rules.** A documentation index is available at [docs/README.md](docs/README.md).
 
-All code modifications and new feature implementations must strictly adhere to the patterns, layers, and constraints described in `ARCHITECTURE.md`. You must consult it before creating new test modes or adjusting the communication stack. This includes:
+All code modifications and new feature implementations must strictly adhere to the patterns, layers, and constraints described in `docs/ARCHITECTURE.md`. You must consult it before creating new test modes or adjusting the communication stack. This includes:
 - Layer overview and orchestration via `ApplicationManager`
 - Base classes like `BaseTest` and protocol implementations
 - Buffer, Flow Control, and Thread Safety paradigms
 
 ## Code Conventions
 
-- **Always check if linter and ruff check are passing before proceeding.** Make sure to suppress only the minimal things.
-- **Always check if the tests are passing** before concluding a task.
-- **Python 3.13** target (ruff config, CI)
-- **ruff** with `select = ["ALL"]` — all lint rules enabled, specific ignores in `ruff.toml`
-- Type hints on all functions and class attributes
-- Tests use pytest-style `assert` with `unittest.mock` for hardware mocking
-- `tests/conftest.py` forces matplotlib `Agg` backend for headless CI
-- Thread safety: `_status_lock` (threading.Lock) guards shared statistics/task dicts in `BaseTest`
-- Test results written to `test_results/` as JSON
+The authoritative conventions are in [docs/ARCHITECTURE.md §9](docs/ARCHITECTURE.md#9-code-conventions)
+(Python 3.13, ruff `select = ["ALL"]`, type hints, threading, logging). Beyond
+those, when working in this repository:
+
+- **Always check that the linter and `ruff check` are passing before proceeding.** Suppress only the minimal things.
+- **Always check that the tests are passing** before concluding a task.
+- `tests/conftest.py` forces the matplotlib `Agg` backend for headless CI.
 - Pre-commit hooks run ruff lint+format and pytest on every commit. `mutmut` is a manual-stage hook (see `.pre-commit-config.yaml`) invoked on demand with `pre-commit run mutmut --hook-stage manual` or `uv run mutmut run`.
