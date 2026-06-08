@@ -11,7 +11,7 @@ jobs:
       # Checkout the repository
       - &checkout
         name: "Checkout the repository"
-        uses: "actions/checkout@v6.0.2"
+        uses: "actions/checkout@v6.0.3"
       # Install uv and sync dependencies
       - &setup-uv
         name: "Set up uv"
