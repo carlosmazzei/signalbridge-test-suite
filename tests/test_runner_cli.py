@@ -10,6 +10,7 @@ from runner_cli import (
     EventSink,
     FeedbackConfig,
     _extract_tester_counters,
+    _forward_stress_progress,
     _latest_new_file,
     _make_parser,
     _parse_baud_rates,
@@ -81,6 +82,25 @@ def test_event_sink_writes_jsonl(tmp_path: Path) -> None:
     payload = json.loads(lines[0])
     assert payload["event"] == "heartbeat"
     assert payload["mode"] == "latency"
+
+
+def test_forward_stress_progress_renames_inner_event_key(tmp_path: Path) -> None:
+    """Inner 'event' key must not collide with EventSink.emit's 'event' arg."""
+    out = tmp_path / "events.jsonl"
+    sink = EventSink(
+        FeedbackConfig(enabled_stdout=False, jsonl_path=str(out), interval_ms=250)
+    )
+    _forward_stress_progress(
+        "stress",
+        sink,
+        {"event": "scenario_started", "scenario_name": "echo_burst"},
+    )
+    sink.close()
+    payload = json.loads(out.read_text(encoding="utf-8").strip().splitlines()[0])
+    assert payload["event"] == "stress_progress"
+    assert payload["stress_event"] == "scenario_started"
+    assert payload["scenario_name"] == "echo_burst"
+    assert payload["mode"] == "stress"
 
 
 def test_write_runner_summary_file_creates_envelope(tmp_path: Path) -> None:

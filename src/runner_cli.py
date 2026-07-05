@@ -367,6 +367,13 @@ def _run_baud_mode(
     return tester
 
 
+def _forward_stress_progress(mode: str, sink: EventSink, data: dict[str, Any]) -> None:
+    """Relay a StressTest progress payload as a ``stress_progress`` sink event."""
+    sub_event = data.get("event")
+    fields = {key: value for key, value in data.items() if key != "event"}
+    sink.emit("stress_progress", mode=mode, stress_event=sub_event, **fields)
+
+
 def _run_stress_mode(
     args: argparse.Namespace, serial: SerialInterface, sink: EventSink
 ) -> Any:
@@ -374,9 +381,7 @@ def _run_stress_mode(
     tester = StressTest(
         serial,
         cfg,
-        progress_callback=lambda data: sink.emit(
-            "stress_progress", mode=args.mode, **data
-        ),
+        progress_callback=lambda data: _forward_stress_progress(args.mode, sink, data),
     )
     sink.emit("mode_started", mode=args.mode)
     serial.set_message_handler(lambda cmd, data, _raw: tester.handle_message(cmd, data))

@@ -8,6 +8,7 @@ implementation rules.
 | --- | --- | --- |
 | [../README.md](../README.md) | Users & operators | Quick start, feature tour, usage guide for every test mode, protocol reference, troubleshooting. **Entry point.** |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Contributors | Authoritative architectural rules — layers, module registration, threading model, serial protocol, and the canonical **Code Conventions**. Read before changing code. |
+| [dotnet_integration.md](dotnet_integration.md) | External orchestrators (.NET, CI) | Contract spec for `runner_cli.py`: CLI arguments, exit codes, stdout/NDJSON event schema, and result-file envelope formats. Update in the same change as any headless-runner behavior change. |
 | [firmware_stress_test_plan.md](firmware_stress_test_plan.md) | Contributors | Roadmap for hardening firmware robustness validation, with current status per phase. |
 | [../CLAUDE.md](../CLAUDE.md) | Claude Code | Orientation for AI-assisted development; defers to `ARCHITECTURE.md` for the detailed rules. |
 

@@ -94,6 +94,10 @@ events (`run_started`, `heartbeat`, `mode_started`, `stress_progress`, `mode_fin
 Additionally, each runner invocation always writes a final envelope JSON file to `test_results/`
 and exposes that path as `summary_file` in the final summary payload.
 
+For the full integration contract (CLI argument reference, exit codes, the NDJSON event
+schema, and result-file envelope formats) see
+[docs/dotnet_integration.md](docs/dotnet_integration.md).
+
 ### Serial Port Configuration
 
 Edit `src/const.py` to match your device:

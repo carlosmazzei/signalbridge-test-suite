@@ -45,6 +45,17 @@ All code modifications and new feature implementations must strictly adhere to t
 - Base classes like `BaseTest` and protocol implementations
 - Buffer, Flow Control, and Thread Safety paradigms
 
+## Headless Runner / External Integration Contract
+
+[docs/dotnet_integration.md](docs/dotnet_integration.md) is the authoritative spec for the
+headless CLI (`src/runner_cli.py`) consumed by external orchestrators (e.g. a .NET service):
+its arguments, exit codes, stdout/NDJSON event schema, and result-file envelope formats.
+
+**Whenever a change touches that surface — `src/runner_cli.py` (flags, stdout behavior, exit
+codes, event names/fields), `src/result_format.py` (envelope shape), or any mode's result
+payload (`latency_test.py`, `baud_rate_test.py`, `stress_evaluator.py`, `regression_test.py`) —
+update `docs/dotnet_integration.md` in the same change.** Do not let it drift from the code.
+
 ## Code Conventions
 
 The authoritative conventions are in [docs/ARCHITECTURE.md §9](docs/ARCHITECTURE.md#9-code-conventions)
