@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from application_manager import ApplicationManager, Mode
+from const import APP_VERSION
 from serial_interface import SerialInterface
 
 if TYPE_CHECKING:
@@ -216,6 +217,7 @@ def test_display_menu_all_modules(
     out = capsys.readouterr().out
 
     assert "SignalBridge Test Suite" in out
+    assert f"v{APP_VERSION}" in out
     assert "Disconnect from device" in out
     for cfg in app_manager.module_configs:
         assert cfg.description in out

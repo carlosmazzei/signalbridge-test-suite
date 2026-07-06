@@ -15,6 +15,7 @@ from rich.table import Table
 
 from baud_rate_test import BaudRateTest
 from command_mode import CommandMode
+from const import APP_VERSION
 from keypad_adc_monitor import KeypadAdcMonitor
 from latency_test import LatencyTest
 from logger_config import setup_logging
@@ -317,7 +318,10 @@ class ApplicationManager:
             show_header=False,
             padding=(0, 1),
             show_edge=False,
-            title=f"[bold cyan]SignalBridge Test Suite[/bold cyan]  —  {status_line}",
+            title=(
+                f"[bold cyan]SignalBridge Test Suite[/bold cyan] "
+                f"[dim]v{APP_VERSION}[/dim]  —  {status_line}"
+            ),
             title_justify="left",
         )
         table.add_column("key", style="bold cyan", no_wrap=True, width=5)

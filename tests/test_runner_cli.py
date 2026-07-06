@@ -6,6 +6,9 @@ import json
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
+
+from const import APP_VERSION
 from runner_cli import (
     EventSink,
     FeedbackConfig,
@@ -123,3 +126,12 @@ def test_parser_help_contains_examples_and_output_notes() -> None:
     assert "Examples:" in help_text
     assert "Output behavior:" in help_text
     assert "--feedback-stdout" in help_text
+
+
+def test_parser_version_prints_version_and_exits(capsys: pytest.CaptureFixture) -> None:
+    """--version prints the package version and exits with code 0."""
+    parser = _make_parser()
+    with pytest.raises(SystemExit) as exc_info:
+        parser.parse_args(["--version"])
+    assert exc_info.value.code == 0
+    assert APP_VERSION in capsys.readouterr().out
