@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from baud_rate_test import BaudRateTest
-from const import BAUDRATE, PORT_NAME, TEST_RESULTS_FOLDER, TIMEOUT
+from const import APP_VERSION, BAUDRATE, PORT_NAME, TEST_RESULTS_FOLDER, TIMEOUT
 from latency_test import LatencyTest
 from logger_config import setup_logging
 from regression_test import RegressionTest
@@ -128,6 +128,12 @@ def _make_parser() -> argparse.ArgumentParser:
             "  * result_file points to the detailed mode artifact when available."
         ),
         formatter_class=argparse.RawTextHelpFormatter,
+    )
+
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {APP_VERSION}",
     )
 
     required_group = parser.add_argument_group("Required")

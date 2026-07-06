@@ -99,6 +99,7 @@ var summary = JsonSerializer.Deserialize<RunnerSummary>(
 | `--baud-rates` | baud_sweep | all 8 standard rates | Comma-separated, e.g. `115200,230400,921600` |
 | `--stress-config` | stress | built-in default | Path to a JSON file loaded via `stress_config.load_stress_config` |
 | `--scenarios` | stress | all configured scenarios | Comma-separated scenario names, e.g. `echo_burst,mixed_command_burst` |
+| `--version` | all | *(none)* | Prints `runner_cli <version>` to stdout and exits `0` immediately; no test is executed. |
 
 Run `uv run src/runner_cli.py --help` for the live, generated version of this
 table — treat this document as the narrative companion, not a substitute.
@@ -118,6 +119,9 @@ summary/result file (see §7), never inferred from the exit code.
 `regression` mode currently has no structured PASS/FAIL output at all (see
 §8, Known gaps) — its exit code is `0` whenever the process itself does not
 crash, regardless of whether the echoed bytes matched.
+
+`--version` is handled by `argparse` before any mode-specific logic runs: it
+always exits `0` and never emits NDJSON events or a summary file.
 
 ## 5. stdout contract
 
