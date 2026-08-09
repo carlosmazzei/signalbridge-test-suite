@@ -1,3 +1,18 @@
+# Copyright (C) 2026 SignalBridge contributors
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 """Latency Test Module."""
 
 from __future__ import annotations
@@ -40,7 +55,7 @@ class LatencyTest(BaseTest):
         """Initialize Latency Test Class."""
         super().__init__(ser)
 
-    def main_test(  # noqa: PLR0913  # Test execution requires many options
+    def main_test(  # noqa: PLR0913, PLR0917  # Test execution requires many options
         self,
         num_times: int = DEFAULT_NUM_TIMES,
         max_wait: float = DEFAULT_MAX_WAIT,

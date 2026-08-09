@@ -59,18 +59,23 @@ New test modes are registered **exclusively** through the `module_configs` list 
 # 1. Add a new value to the Mode enum
 class Mode(Enum):
     ...
-    MY_NEW_MODE = 7          # next integer after the current max
+    MY_NEW_MODE = 7  # next integer after the current max
+
 
 # 2. Append a ModuleConfig entry (in __init__, after the existing entries)
-ModuleConfig(
-    key="7",
-    mode=Mode.MY_NEW_MODE,
-    description="My new test",
-    builder=lambda: MyNewMode(self.serial_interface),
-    runner=lambda module: module.execute_test(),
-    handler=lambda module, command, data, _unused: module.handle_message(command, data),
-    requires_serial=True,
-),
+(
+    ModuleConfig(
+        key="7",
+        mode=Mode.MY_NEW_MODE,
+        description="My new test",
+        builder=lambda: MyNewMode(self.serial_interface),
+        runner=lambda module: module.execute_test(),
+        handler=lambda module, command, data, _unused: module.handle_message(
+            command, data
+        ),
+        requires_serial=True,
+    ),
+)
 ```
 
 `ApplicationManager` automatically:
@@ -237,6 +242,7 @@ These constants are class attributes on `SerialInterface` and must not be duplic
 ```python
 from __future__ import annotations
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from collections.abc import Callable
 ```
@@ -270,6 +276,7 @@ Every new module or function must have a corresponding test file `tests/test_<mo
 ```python
 # Hardware mocking — never open a real serial port in tests
 from unittest.mock import MagicMock, patch
+
 
 @pytest.fixture
 def serial_interface():
