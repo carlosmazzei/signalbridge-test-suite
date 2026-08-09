@@ -104,8 +104,8 @@ Edit `src/const.py` to match your device:
 
 ```python
 PORT_NAME = "/dev/cu.usbmodem101"  # macOS — adjust for your OS
-BAUDRATE  = 921600                 # Must match firmware setting
-TIMEOUT   = 0.1                   # Read timeout in seconds
+BAUDRATE = 921600  # Must match firmware setting
+TIMEOUT = 0.1  # Read timeout in seconds
 ```
 
 Common port names:
@@ -390,6 +390,7 @@ uv run mutmut run
    ```python
    # src/my_test.py
    from base_test import BaseTest
+
 
    class MyTest(BaseTest):
        def execute_test(self) -> None: ...
