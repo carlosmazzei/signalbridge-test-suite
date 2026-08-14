@@ -72,8 +72,7 @@ class BaudRateTest(BaseTest):
 
         with alive_bar(samples * len(baud_rates), title=bar_title) as pbar:
             for j, rate in enumerate(baud_rates):
-                self.latency_msg_sent.clear()
-                self.latency_msg_received.clear()
+                self._reset_latency()
                 outstanding_messages: list[int] = []
                 status_before = self._request_status_snapshot()
 
@@ -98,17 +97,15 @@ class BaudRateTest(BaseTest):
                     self.publish(i, length)
                     time.sleep(min_uart_delay)
                     pbar()
-                    outstanding_messages.append(
-                        len(self.latency_msg_sent) - len(self.latency_msg_received)
-                    )
+                    _, sent_count, received_count = self._latency_snapshot()
+                    outstanding_messages.append(sent_count - received_count)
 
                 burst_elapsed_time = time.perf_counter() - burst_init_time
                 logger.info("Waiting for %d seconds to collect results...", wait_time)
                 time.sleep(wait_time)
                 status_after = self._request_status_snapshot()
-                outstanding_final = len(self.latency_msg_sent) - len(
-                    self.latency_msg_received
-                )
+                latency_results, sent_count, received_count = self._latency_snapshot()
+                outstanding_final = sent_count - received_count
 
                 bitrate = (samples * 8 * length) / burst_elapsed_time
 
@@ -119,7 +116,6 @@ class BaudRateTest(BaseTest):
                     bitrate=bitrate,
                 )
                 test_results["baudrate"] = rate
-                latency_results = list(self.latency_msg_received.values())
                 output_data.append(
                     {
                         **test_results,

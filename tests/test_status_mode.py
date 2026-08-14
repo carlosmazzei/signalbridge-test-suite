@@ -21,8 +21,9 @@ import datetime
 import logging
 import time
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
 from unittest.mock import Mock, patch
+
+import pytest
 
 from base_test import STATISTICS_HEADER_BYTES
 from serial_interface import SerialCommand, SerialInterface
@@ -30,9 +31,6 @@ from status_mode import (
     _TASK_INDEX_BY_NAME,
     StatusMode,
 )
-
-if TYPE_CHECKING:
-    import pytest
 
 
 class DummyStats:
@@ -44,6 +42,17 @@ class DummyStats:
         self.bytes_sent = 0
         self.commands_sent: dict[int, int] = {}
         self.commands_received: dict[int, int] = {}
+
+    def snapshot(self) -> dict[str, object]:
+        """Mirror SerialStatistics.snapshot()."""
+        return {
+            "bytes_received": self.bytes_received,
+            "bytes_sent": self.bytes_sent,
+            "commands_sent": dict(self.commands_sent),
+            "commands_received": dict(self.commands_received),
+            "dropped_frames": 0,
+            "checksum_mismatches": 0,
+        }
 
 
 def make_status_mode() -> StatusMode:
@@ -478,3 +487,26 @@ def test_base_test_snapshot_includes_heap() -> None:
         result = bt._request_status_snapshot(timeout_s=1.0)
 
     assert result["min_free_heap_bytes"] == 42_000
+
+
+class TestCommandLabel:
+    """Counters are keyed by data[1] & 0x1F, which exceeds the enum."""
+
+    def test_known_command_uses_enum_name(self) -> None:
+        """Named commands still render their enum name."""
+        assert StatusMode._command_label(SerialCommand.ECHO_COMMAND.value) == (
+            "ECHO_COMMAND"
+        )
+
+    @pytest.mark.parametrize("value", [0, 1, 7, 31])
+    def test_unknown_command_renders_instead_of_raising(self, value: int) -> None:
+        """SerialCommand(value) raised ValueError and aborted the whole table."""
+        assert StatusMode._command_label(value) == f"UNKNOWN(0x{value:02X})"
+
+    def test_display_survives_unknown_command_ids(self) -> None:
+        """An arbitrary hex frame sent from Command Mode must not crash Status."""
+        sm = make_status_mode()
+        sm.ser.statistics.commands_sent = {0: 3, SerialCommand.ECHO_COMMAND.value: 1}
+        sm.ser.statistics.commands_received = {31: 2}
+
+        sm._display_statistics_status()  # must not raise

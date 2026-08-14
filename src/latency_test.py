@@ -67,6 +67,7 @@ class LatencyTest(BaseTest):
         jitter: bool = False,
     ) -> None:
         """Execute the main test given the desired parameters."""
+        num_times, samples = self._validate_run_size(num_times, samples)
         output_filename = make_result_filename("latency", self._run_id)
         file_path = Path(__file__).parent.parent / TEST_RESULTS_FOLDER / output_filename
 
@@ -87,11 +88,13 @@ class LatencyTest(BaseTest):
 
         with alive_bar(samples * num_times, title=bar_title) as pbar:
             for j in range(num_times):
-                self.latency_msg_sent.clear()
-                self.latency_msg_received.clear()
+                self._reset_latency()
                 outstanding_messages: list[int] = []
                 status_before = self._request_status_snapshot()
-                raw_wait = min_wait + (max_wait - min_wait) * (j / (num_times - 1))
+                # With a single iteration the ramp degenerates to one point;
+                # dividing by num_times - 1 would be a division by zero.
+                ramp = j / (num_times - 1) if num_times > 1 else 0.0
+                raw_wait = min_wait + (max_wait - min_wait) * ramp
                 waiting_time = max(raw_wait, min_uart_delay)
                 logger.info("Test %s, waiting time: %d s", j, waiting_time)
                 random_max = (max_wait - min_wait) * 0.2
@@ -106,17 +109,15 @@ class LatencyTest(BaseTest):
                     else:
                         time.sleep(waiting_time)
                     pbar()
-                    outstanding_messages.append(
-                        len(self.latency_msg_sent) - len(self.latency_msg_received)
-                    )
+                    _, sent_count, received_count = self._latency_snapshot()
+                    outstanding_messages.append(sent_count - received_count)
 
                 burst_elapsed_time = time.perf_counter() - burst_init_time
                 logger.info("Waiting for %d seconds to collect results...", wait_time)
                 time.sleep(wait_time)
                 status_after = self._request_status_snapshot()
-                outstanding_final = len(self.latency_msg_sent) - len(
-                    self.latency_msg_received
-                )
+                latencies, sent_count, received_count = self._latency_snapshot()
+                outstanding_final = sent_count - received_count
                 # Calculated bitrate considering the total payload (HEADER_BYTES + 1)
                 bitrate = (samples * 8 * length) / burst_elapsed_time
 
@@ -127,7 +128,7 @@ class LatencyTest(BaseTest):
                     bitrate=bitrate,
                     jitter=jitter,
                 )
-                latency_results_copy[j] = list(self.latency_msg_received.values())
+                latency_results_copy[j] = latencies
                 output_data.append(
                     {
                         **test_results,
@@ -146,6 +147,33 @@ class LatencyTest(BaseTest):
                 )
 
         self._write_output_to_file(file_path, output_data)
+
+    @staticmethod
+    def _validate_run_size(num_times: int, samples: int) -> tuple[int, int]:
+        """
+        Clamp iteration and sample counts to values the protocol can express.
+
+        Applied inside ``main_test`` rather than only in ``_show_options`` so
+        the headless entry points (``execute_test_with_options`` and
+        ``runner_cli``) get the same guarantees.  The sample ceiling matters
+        because ``publish()`` packs the counter into two bytes.
+        """
+        if num_times <= 0:
+            logger.info(
+                "Invalid number of times (%d). Using default value %d.",
+                num_times,
+                DEFAULT_NUM_TIMES,
+            )
+            num_times = DEFAULT_NUM_TIMES
+        if samples <= 0 or samples >= MAX_SAMPLE_SIZE:
+            logger.info(
+                "Invalid number of samples (%d); must be in 1..%d. Using default %d.",
+                samples,
+                MAX_SAMPLE_SIZE - 1,
+                DEFAULT_SAMPLES,
+            )
+            samples = DEFAULT_SAMPLES
+        return num_times, samples
 
     def _default_min_wait_ms(
         self, message_length: int = DEFAULT_MESSAGE_LENGTH
@@ -199,7 +227,7 @@ class LatencyTest(BaseTest):
         num_samples = self._get_user_input(
             "(5/7) Enter number of samples", DEFAULT_SAMPLES
         )
-        if num_samples <= 0 and num_samples < MAX_SAMPLE_SIZE:
+        if num_samples <= 0 or num_samples >= MAX_SAMPLE_SIZE:
             num_samples = DEFAULT_SAMPLES
             logger.info("Invalid number of samples. Using default value.")
 

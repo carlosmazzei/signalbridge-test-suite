@@ -18,6 +18,8 @@
 from __future__ import annotations
 
 import logging
+import queue
+import threading
 from typing import TYPE_CHECKING, Any
 from unittest.mock import Mock, patch
 
@@ -25,7 +27,7 @@ import serial
 from cobs import cobs
 
 from checksum import calculate_checksum
-from serial_interface import SerialCommand, SerialInterface
+from serial_interface import SerialCommand, SerialInterface, SerialStatistics
 
 if TYPE_CHECKING:
     import pytest
@@ -484,3 +486,148 @@ def test_threads_are_daemon() -> None:
     si = make_interface()
     assert si.read_thread.daemon is True
     assert si.processing_thread.daemon is True
+
+
+class TestResilienceFixes:
+    """Regression tests for the resilience and thread-safety hardening."""
+
+    def test_close_without_start_reading_does_not_raise(self) -> None:
+        """close() must tolerate threads that were never started."""
+        si = make_interface()
+        si.ser = Mock()
+        # Threads are constructed in __init__ but never started; joining an
+        # unstarted thread raises RuntimeError, so close() must skip them.
+        si.close()
+        si.ser.close.assert_called_once()
+
+    def test_close_gives_up_on_wedged_thread(self) -> None:
+        """A thread that never stops is abandoned instead of hanging close()."""
+        si = make_interface()
+        si.ser = Mock()
+        stuck = Mock()
+        stuck.is_alive.return_value = True
+        stuck.name = "stuck-thread"
+        si.read_thread = stuck
+        si.processing_thread = None  # type: ignore[assignment]
+
+        si.close()
+
+        stuck.join.assert_called_once_with(timeout=SerialInterface.JOIN_TIMEOUT_S)
+        si.ser.close.assert_called_once()
+
+    def test_write_swallows_timeout_exception(self) -> None:
+        """A full output buffer must not propagate into the caller's loop."""
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.write.side_effect = serial.SerialTimeoutException("full")
+        si.ser = ser_mock
+
+        si.write(b"\x00\x34\x02\x01\x02")  # must not raise
+
+    def test_write_swallows_serial_exception(self) -> None:
+        """A disconnected cable must not propagate into the caller's loop."""
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.write.side_effect = serial.SerialException("gone")
+        si.ser = ser_mock
+
+        si.write(b"\x00\x34\x02\x01\x02")  # must not raise
+
+    def test_write_raw_bypasses_framing_and_counts_bytes(self) -> None:
+        """write_raw puts bytes on the wire verbatim and tracks them."""
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.write.side_effect = len
+        si.ser = ser_mock
+
+        payload = bytes([0x01] * 26)
+        si.write_raw(payload)
+
+        ser_mock.write.assert_called_once_with(payload)
+        ser_mock.flush.assert_called_once()
+        assert si.statistics.snapshot()["bytes_sent"] == len(payload)
+
+    def test_write_raw_swallows_serial_exception(self) -> None:
+        """Raw injection failures are logged, not raised."""
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.write.side_effect = serial.SerialException("gone")
+        si.ser = ser_mock
+
+        si.write_raw(b"\x01\x02")  # must not raise
+
+    def test_full_queue_drops_frame_instead_of_blocking(self) -> None:
+        """A saturated queue sheds frames rather than stalling the read thread."""
+        si = make_interface()
+        si.message_queue = queue.Queue(maxsize=1)
+
+        si._enqueue_message(b"first")
+        si._enqueue_message(b"second")  # dropped, must not block
+
+        assert si.message_queue.qsize() == 1
+        assert si.statistics.snapshot()["dropped_frames"] == 1
+
+    def test_checksum_mismatch_counted_but_dispatched_by_default(self) -> None:
+        """With verification off, a bad checksum is counted and still delivered."""
+        si = make_interface()
+        seen: list[int] = []
+        si.set_message_handler(lambda cmd, _d, _r: seen.append(cmd))
+
+        body = bytes([0x00, SerialCommand.KEY_COMMAND.value, 0x02, 0x11])
+        frame = cobs.encode(body + b"\xff")  # deliberately wrong checksum
+        si._process_complete_message(frame)
+
+        assert seen == [SerialCommand.KEY_COMMAND.value]
+        assert si.statistics.snapshot()["checksum_mismatches"] == 1
+
+    def test_checksum_mismatch_dropped_when_verification_enabled(self) -> None:
+        """With verification on, a bad checksum frame is not dispatched."""
+        si = SerialInterface(
+            port="COM1", baudrate=115200, timeout=0.1, verify_checksum=True
+        )
+        seen: list[int] = []
+        si.set_message_handler(lambda cmd, _d, _r: seen.append(cmd))
+
+        body = bytes([0x00, SerialCommand.KEY_COMMAND.value, 0x02, 0x11])
+        frame = cobs.encode(body + b"\xff")
+        si._process_complete_message(frame)
+
+        assert seen == []
+        assert si.statistics.snapshot()["checksum_mismatches"] == 1
+
+    def test_valid_checksum_dispatched_when_verification_enabled(self) -> None:
+        """A correctly checksummed frame passes verification."""
+        si = SerialInterface(
+            port="COM1", baudrate=115200, timeout=0.1, verify_checksum=True
+        )
+        seen: list[int] = []
+        si.set_message_handler(lambda cmd, _d, _r: seen.append(cmd))
+
+        body = bytes([0x00, SerialCommand.KEY_COMMAND.value, 0x02, 0x11])
+        frame = cobs.encode(body + calculate_checksum(body))
+        si._process_complete_message(frame)
+
+        assert seen == [SerialCommand.KEY_COMMAND.value]
+        assert si.statistics.snapshot()["checksum_mismatches"] == 0
+
+    def test_statistics_snapshot_stable_under_concurrent_writes(self) -> None:
+        """snapshot() must not raise while another thread adds command keys."""
+        stats = SerialStatistics()
+        stop = threading.Event()
+
+        def writer() -> None:
+            command = 0
+            while not stop.is_set():
+                stats.record_received_command(command % 32)
+                command += 1
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        try:
+            for _ in range(2000):
+                # Iterating the live defaultdict here would raise
+                # "dictionary changed size during iteration".
+                assert isinstance(stats.snapshot()["commands_received"], dict)
+        finally:
+            stop.set()
+            thread.join(timeout=5)

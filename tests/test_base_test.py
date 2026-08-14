@@ -903,3 +903,96 @@ class TestStatusDeltaMissingKeys:
         # Other stats should be 0 - 0 = 0
         second_stat = list(STATISTICS_ITEMS.values())[1]
         assert delta["statistics"][second_stat] == 0
+
+
+class TestBooleanPromptParsing:
+    """Boolean prompts must be parseable as words, not cast via bool()."""
+
+    @pytest.mark.parametrize(
+        ("entered", "expected"),
+        [
+            ("False", False),
+            ("false", False),
+            ("no", False),
+            ("n", False),
+            ("0", False),
+            ("anything else", False),
+            ("True", True),
+            ("true", True),
+            ("yes", True),
+            ("y", True),
+            ("1", True),
+            ("  TRUE  ", True),
+        ],
+    )
+    def test_bool_input_parsed_by_word(self, entered: str, *, expected: bool) -> None:
+        """bool("False") is True, so a plain cast would make "no" impossible."""
+        base = BaseTest(Mock())
+        with patch("base_test.console.input", return_value=entered):
+            assert base._get_user_input("Enable?", default_value=False) is expected
+
+    def test_bool_empty_input_keeps_default(self) -> None:
+        """An empty answer keeps whichever default was offered."""
+        base = BaseTest(Mock())
+        with patch("base_test.console.input", return_value=""):
+            assert base._get_user_input("Enable?", default_value=True) is True
+            assert base._get_user_input("Enable?", default_value=False) is False
+
+    def test_invalid_numeric_input_falls_back_to_default(self) -> None:
+        """A non-numeric answer must not abort the whole mode."""
+        base = BaseTest(Mock())
+        with patch("base_test.console.input", return_value="abc"):
+            assert base._get_user_input("Samples", 255) == 255
+            assert base._get_user_input("Wait", 1.5) == 1.5
+
+    def test_valid_numeric_input_still_cast(self) -> None:
+        """Normal numeric entry keeps working."""
+        base = BaseTest(Mock())
+        with patch("base_test.console.input", return_value="42"):
+            assert base._get_user_input("Samples", 255) == 42
+
+
+class TestLatencyThreadSafety:
+    """The latency dicts are written from the processing thread."""
+
+    def test_snapshot_stable_while_echoes_arrive(self) -> None:
+        """_latency_snapshot must not raise while handle_message inserts."""
+        base = BaseTest(Mock())
+        stop = threading.Event()
+
+        def writer() -> None:
+            counter = 0
+            while not stop.is_set():
+                # Cycle over a bounded key range: an ever-growing dict would
+                # make each snapshot copy progressively slower, not more racy.
+                key = counter % 64
+                with base._latency_lock:
+                    base.latency_msg_sent[key] = 0.0
+                    base.latency_msg_received[key] = 0.001
+                    if key == 0:
+                        base.latency_msg_sent.clear()
+                        base.latency_msg_received.clear()
+                counter += 1
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        try:
+            for _ in range(2000):
+                # Copying the live dict here would raise
+                # "dictionary changed size during iteration".
+                latencies, sent, received = base._latency_snapshot()
+                assert len(latencies) == received
+                assert sent >= received
+        finally:
+            stop.set()
+            thread.join(timeout=5)
+
+    def test_reset_clears_both_dicts(self) -> None:
+        """_reset_latency replaces the paired clear() calls."""
+        base = BaseTest(Mock())
+        base.latency_msg_sent[1] = 0.0
+        base.latency_msg_received[1] = 0.5
+
+        base._reset_latency()
+
+        assert base._latency_snapshot() == ([], 0, 0)

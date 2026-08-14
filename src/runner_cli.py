@@ -308,6 +308,8 @@ def _load_stress_cfg(path: str) -> StressConfig:
 def _extract_tester_counters(tester: Any) -> dict[str, Any]:
     """Return generic counters from tester objects for heartbeat events."""
     counters: dict[str, Any] = {}
+    # len() on a dict reads its size directly rather than iterating, so it is
+    # safe to call while the processing thread inserts entries.
     sent = getattr(tester, "latency_msg_sent", None)
     received = getattr(tester, "latency_msg_received", None)
     if isinstance(sent, dict):
@@ -326,15 +328,19 @@ def _run_feedback_loop(
     """Emit periodic heartbeat events while a run is active."""
     while not monitor.stop_event.wait(monitor.interval_s):
         tester = monitor.tester_getter()
-        serial_stats = monitor.serial.statistics
+        # Snapshot under the statistics lock: these counters are mutated by the
+        # read and processing threads while this heartbeat thread reads them.
+        serial_stats = monitor.serial.statistics.snapshot()
         monitor.sink.emit(
             "heartbeat",
             mode=monitor.mode,
             elapsed_s=round(time.time() - monitor.start_time, 3),
-            bytes_sent=serial_stats.bytes_sent,
-            bytes_received=serial_stats.bytes_received,
-            commands_sent=dict(serial_stats.commands_sent),
-            commands_received=dict(serial_stats.commands_received),
+            bytes_sent=serial_stats["bytes_sent"],
+            bytes_received=serial_stats["bytes_received"],
+            commands_sent=serial_stats["commands_sent"],
+            commands_received=serial_stats["commands_received"],
+            dropped_frames=serial_stats["dropped_frames"],
+            checksum_mismatches=serial_stats["checksum_mismatches"],
             **(_extract_tester_counters(tester) if tester is not None else {}),
         )
 

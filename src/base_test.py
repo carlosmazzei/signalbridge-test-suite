@@ -43,6 +43,9 @@ TASK_HEADER_BYTES = bytes([0x00, 0x38])
 STATUS_REQUEST_SPACING_S = 0.02
 STATUS_REQUEST_TIMEOUT_S = 2.0
 
+# Accepted affirmative answers for boolean prompts; anything else reads as false.
+TRUE_INPUTS = frozenset({"true", "t", "yes", "y", "1"})
+
 STATISTICS_ITEMS = {
     0: "queue_send_error",
     1: "queue_receive_error",
@@ -186,6 +189,11 @@ class BaseTest:
         self._run_id: str = uuid.uuid4().hex[:8]
         self.latency_msg_sent: dict[int, float] = {}
         self.latency_msg_received: dict[int, float] = {}
+        # Guards the two latency dicts: publish() writes from the main thread
+        # while handle_message() writes from the processing thread, and result
+        # collection iterates them.  Use _latency_snapshot()/_reset_latency()
+        # instead of touching the dicts directly.
+        self._latency_lock = threading.Lock()
         self._status_lock = threading.Lock()
         self._statistics_values: dict[int, int] = dict.fromkeys(STATISTICS_ITEMS, 0)
         self._statistics_updated_at: dict[int, float] = dict.fromkeys(
@@ -207,10 +215,31 @@ class BaseTest:
         m_length = (len(trailer) + 2).to_bytes(1, byteorder="big")
         payload = HEADER_BYTES + m_length + counter + trailer
 
-        self.latency_msg_sent[iteration_counter] = time.perf_counter()
+        with self._latency_lock:
+            self.latency_msg_sent[iteration_counter] = time.perf_counter()
         self.ser.write(payload)
         self.ser.flush()
         logger.info("Published (encoded) `%s`, counter %s", payload, iteration_counter)
+
+    def _reset_latency(self) -> None:
+        """Clear both latency dictionaries atomically."""
+        with self._latency_lock:
+            self.latency_msg_sent.clear()
+            self.latency_msg_received.clear()
+
+    def _latency_snapshot(self) -> tuple[list[float], int, int]:
+        """
+        Return ``(latencies, sent_count, received_count)`` consistently.
+
+        Copies under the lock so a late echo arriving on the processing thread
+        cannot resize the dict mid-iteration.
+        """
+        with self._latency_lock:
+            return (
+                list(self.latency_msg_received.values()),
+                len(self.latency_msg_sent),
+                len(self.latency_msg_received),
+            )
 
     def handle_message(self, command: int, decoded_data: bytes) -> None:
         """Handle return message and store measured latency."""
@@ -218,8 +247,9 @@ class BaseTest:
             try:
                 counter_bytes = [decoded_data[3], decoded_data[4]]
                 counter = int.from_bytes(counter_bytes, byteorder="big")
-                latency = time.perf_counter() - self.latency_msg_sent[counter]
-                self.latency_msg_received[counter] = latency
+                with self._latency_lock:
+                    latency = time.perf_counter() - self.latency_msg_sent[counter]
+                    self.latency_msg_received[counter] = latency
                 logger.info("Message %d latency: %.5f ms", counter, latency * 1e3)
             except IndexError:
                 logger.info("Invalid message (Index Error)")
@@ -273,10 +303,11 @@ class BaseTest:
         jitter: bool = False,
     ) -> dict[str, Any]:
         """Calculate latency statistics and dropped messages."""
-        dropped_messages = len(self.latency_msg_sent) - len(self.latency_msg_received)
+        latencies, sent_count, received_count = self._latency_snapshot()
+        dropped_messages = sent_count - received_count
         logger.info("Dropped messages: %d ", dropped_messages)
 
-        if not self.latency_msg_received:
+        if not latencies:
             logger.info("No results collected for this test.")
             return {
                 "test": test,
@@ -291,7 +322,6 @@ class BaseTest:
                 "dropped_messages": dropped_messages,
             }
 
-        latencies = list(self.latency_msg_received.values())
         latency_avg = sum(latencies) / len(latencies)
         latency_min = min(latencies)
         latency_max = max(latencies)
@@ -426,12 +456,31 @@ class BaseTest:
         return {"statistics": statistics_delta, "tasks": tasks_delta}
 
     def _get_user_input(self, prompt: str, default_value: Any) -> Any:
-        """Get user input with default fallback."""
+        """
+        Get user input with default fallback.
+
+        Booleans are parsed by word rather than cast, because ``bool("False")``
+        is ``True`` -- a plain cast makes it impossible to answer "no". A value
+        that cannot be converted falls back to the default instead of raising.
+        """
         user_input = console.input(
             f"[bold]{prompt}[/bold] [dim](default: {default_value})[/dim]: "
         )
-        return (
-            default_value
-            if user_input.strip() == ""
-            else type(default_value)(user_input)
-        )
+        text = user_input.strip()
+        if text == "":
+            return default_value
+
+        # bool is a subclass of int, so it has to be handled before the cast.
+        if isinstance(default_value, bool):
+            return text.lower() in TRUE_INPUTS
+
+        try:
+            return type(default_value)(text)
+        except (TypeError, ValueError):
+            logger.info(
+                "Invalid value %r for '%s'. Using default %r.",
+                text,
+                prompt,
+                default_value,
+            )
+            return default_value
