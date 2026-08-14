@@ -32,6 +32,14 @@ setup_logging()
 
 logger = logging.getLogger(__name__)
 
+# Minimum decoded lengths before the corresponding fields can be indexed.
+_HEADER_LEN = 3  # rxID_high, rxID_low|cmd, len_field
+_KEY_FRAME_LEN = 4  # header + packed col/row/state byte
+_ANALOG_FRAME_LEN = 6  # header + channel + 2 value bytes
+
+# Bound on undisplayed frames, so a stalled display cannot grow without limit.
+MAX_QUEUE_SIZE = 10000
+
 
 class CommandMode:
     """
@@ -52,7 +60,7 @@ class CommandMode:
 
         """
         self.serial_interface = serial_interface
-        self.message_queue = queue.Queue()
+        self.message_queue = queue.Queue(maxsize=MAX_QUEUE_SIZE)
         self.running = False
         self.input_lock = threading.Lock()
         self.current_input = ""
@@ -125,9 +133,12 @@ class CommandMode:
         while self.running:
             try:
                 message = self.message_queue.get(timeout=0.1)
-                self._handle_message(*message)
             except queue.Empty:
                 continue
+            try:
+                self._handle_message(*message)
+            except Exception:  # A bad frame must not kill the display thread
+                logger.exception("Error displaying received message")
 
     def handle_message(
         self,
@@ -145,8 +156,12 @@ class CommandMode:
         byte_string (bytes): The raw byte string received.
 
         """
-        # Add message to queue for processing
-        self.message_queue.put((command, decoded_data, byte_string))
+        # Add message to queue for processing.  Called from the serial
+        # processing thread, so never block it on a saturated queue.
+        try:
+            self.message_queue.put_nowait((command, decoded_data, byte_string))
+        except queue.Full:
+            logger.warning("Command mode queue full; dropping frame for display")
 
     def _handle_message(
         self,
@@ -165,16 +180,21 @@ class CommandMode:
                 sys.stdout.flush()
 
                 # Print the message
-                cobs_decoded = cobs.decode(byte_string)
+                try:
+                    cobs_decoded = cobs.decode(byte_string)
+                except cobs.DecodeError:
+                    logger.warning("Undecodable frame: %s", byte_string.hex())
+                    cobs_decoded = b""
                 received_checksum = cobs_decoded[-1:]
                 calculated_checksum = calculate_checksum(cobs_decoded[:-1])
                 logger.info(
-                    "Received raw: %s, decoded: %s, \
-                        Received Checksum: %s, Calculated Checksum: %s",
+                    "Received raw: %s, decoded: %s, Received Checksum: %s, "
+                    "Calculated Checksum: %s, Match: %s",
                     byte_string,
                     decoded_data,
                     received_checksum,
                     calculated_checksum,
+                    received_checksum == calculated_checksum,
                 )
                 self._print_decoded_message(decoded_data)
 
@@ -193,11 +213,17 @@ class CommandMode:
         """
         logout = " ".join(f"{i}: {msg}" for i, msg in enumerate(message))
         logger.info("Decoded message: %s", logout)
+        if len(message) < _HEADER_LEN:
+            logger.warning("Frame too short to decode header (%d bytes)", len(message))
+            return
         rxid = (message[0] << 3) | ((message[1] & 0xE0) >> 5)
         command = message[1] & 0x1F
         length = message[2]
         logger.info("Id: %s, Command: %s", rxid, command)
         if command == SerialCommand.KEY_COMMAND.value:
+            if len(message) < _KEY_FRAME_LEN:
+                logger.warning("Key frame truncated (%d bytes)", len(message))
+                return
             state = message[3] & 0x01
             col = (message[3] >> 4) & 0x0F
             row = (message[3] >> 1) & 0x0F
@@ -209,6 +235,9 @@ class CommandMode:
                 length,
             )
         elif command == SerialCommand.ANALOG_COMMAND.value:
+            if len(message) < _ANALOG_FRAME_LEN:
+                logger.warning("Analog frame truncated (%d bytes)", len(message))
+                return
             channel = message[3]
             value = (message[4] << 8) | message[5]
             logger.info("Channel: %s, Value: %s", channel, value)

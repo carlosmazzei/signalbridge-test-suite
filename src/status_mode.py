@@ -178,6 +178,21 @@ class StatusMode:
         self.logger.info("Status request complete")
 
     @staticmethod
+    def _command_label(value: int) -> str:
+        """
+        Return a display name for a command id.
+
+        Counters are keyed by ``data[1] & 0x1F`` (0-31), but only five of those
+        are named in ``SerialCommand`` -- an arbitrary hex frame sent from
+        Command Mode, or an unexpected device reply, produces an id with no
+        enum member.  Render those instead of raising.
+        """
+        try:
+            return SerialCommand(value).name
+        except ValueError:
+            return f"UNKNOWN(0x{value:02X})"
+
+    @staticmethod
     def _fmt_timestamp(ts: float) -> str:
         """Format a Unix timestamp as a UTC datetime string, or 'N/A' if zero."""
         if ts == 0:
@@ -212,6 +227,10 @@ class StatusMode:
 
         console.print(stats_table)
 
+        # Copy the counters once: the read and processing threads keep mutating
+        # them, and iterating the live dicts can change size mid-loop.
+        stats = self.ser.statistics.snapshot()
+
         # --- Commands sent table ---
         sent_table = Table(
             title="Commands Sent",
@@ -220,12 +239,10 @@ class StatusMode:
         )
         sent_table.add_column("Command", style="bold")
         sent_table.add_column("Count", justify="right")
-        for k, v in self.ser.statistics.commands_sent.items():
-            sent_table.add_row(SerialCommand(k).name, f"{v:,}")
+        for k, v in stats["commands_sent"].items():
+            sent_table.add_row(self._command_label(k), f"{v:,}")
         console.print(sent_table)
-        console.print(
-            f"  Total bytes sent: [cyan]{self.ser.statistics.bytes_sent:,}[/cyan]"
-        )
+        console.print(f"  Total bytes sent: [cyan]{stats['bytes_sent']:,}[/cyan]")
 
         # --- Commands received table ---
         recv_table = Table(
@@ -235,10 +252,10 @@ class StatusMode:
         )
         recv_table.add_column("Command", style="bold")
         recv_table.add_column("Count", justify="right")
-        for k, v in self.ser.statistics.commands_received.items():
-            recv_table.add_row(SerialCommand(k).name, f"{v:,}")
+        for k, v in stats["commands_received"].items():
+            recv_table.add_row(self._command_label(k), f"{v:,}")
         console.print(recv_table)
-        received = self.ser.statistics.bytes_received
+        received = stats["bytes_received"]
         console.print(f"  Total bytes received: [cyan]{received:,}[/cyan]")
 
     def format_time_from_microseconds(self, microseconds: int) -> str:
