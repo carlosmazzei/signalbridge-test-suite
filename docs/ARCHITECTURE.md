@@ -118,12 +118,56 @@ Every test mode that communicates with the device **must** extend `BaseTest` (`s
 | `_write_output_to_file(path, data)` | Serialize results list to JSON |
 | `_request_status_snapshot(timeout_s)` | Poll all 22 statistics + 10 task items; return `{statistics, tasks, received, complete}` |
 | `_calculate_status_delta(before, after)` | Compute counter deltas between two snapshots |
-| `_get_user_input(prompt, default_value)` | Prompt with default, auto-cast to `type(default_value)` |
+| `_get_user_input(prompt, default_value)` | Prompt with default, auto-cast to `type(default_value)`; `bool` defaults are parsed by word and an unconvertible entry falls back to the default |
 | `_status_lock` | `threading.Lock` — always acquire before reading/writing `_statistics_values` or `_task_values` |
+| `_latency_lock` | `threading.Lock` — guards `latency_msg_sent` / `latency_msg_received` |
+| `_latency_snapshot()` | Returns `(latencies, sent_count, received_count)` copied under `_latency_lock` |
+| `_reset_latency()` | Clears both latency dicts under `_latency_lock` |
 
 ### Thread-safety rule
 
 `handle_message` is called from the **processing thread**. Every write to `_statistics_values` or `_task_values` must be done inside `with self._status_lock:`. Reads of those dicts in the main thread must also be inside the lock.
+
+The same rule applies to the latency dictionaries under `_latency_lock`.
+Test modes must **not** read `latency_msg_sent` / `latency_msg_received`
+directly — iterating them while a late echo arrives raises
+`RuntimeError: dictionary changed size during iteration`. Use
+`_latency_snapshot()` to read and `_reset_latency()` to clear.
+
+`SerialStatistics` owns its own lock. Its counters are written by the read
+thread (`bytes_received`) and the processing thread (`commands_received`)
+while the main thread — and, under the headless runner, the heartbeat thread
+— reads them. Mutate only through its `record_*` methods and read only via
+`snapshot()`; never iterate the live `commands_sent` / `commands_received`
+dictionaries.
+
+`SerialInterface.write()` and `write_raw()` share `_write_lock`, so concurrent
+producers (echo publisher, status pollers, raw fault injection) cannot
+interleave bytes mid-frame.
+
+### Status snapshot cost
+
+`_request_status_snapshot()` paces one request per item, so its floor is set by
+the number of items, not by how fast the device answers. Pass
+`include_tasks=False` when only `status_delta` is consumed — it skips the
+per-task round-trips entirely. Scenarios that snapshot in a loop should carry
+each "after" snapshot over as the next iteration's "before" rather than polling
+twice per step; `_run_fault_injection` is the reference for both.
+
+### Flow control
+
+RTS backpressure is driven by `message_queue.qsize()` against
+`QUEUE_HIGH_WATER` / `QUEUE_LOW_WATER`, i.e. by how far the processing thread
+has fallen behind. Do **not** measure it on `self.buffer`: that is the
+partial-frame accumulator, cleared at every delimiter, so an ordinary ~12-byte
+frame never approaches a byte watermark and flow control would never engage.
+
+### Logging setup
+
+`setup_logging()` configures the process once and ignores later calls. Eight
+modules invoke it at import time, and each real run re-reads the ini file,
+re-opens the handlers, and restarts the `QueueListener` thread. Pass
+`force=True` only for a deliberate reconfiguration.
 
 ---
 

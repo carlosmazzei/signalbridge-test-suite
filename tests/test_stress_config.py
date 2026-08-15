@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 
+import fault_frames
 from const import TEST_RESULTS_FOLDER
 from stress_config import (
     ScenarioConfig,
@@ -32,6 +33,7 @@ from stress_config import (
     default_stress_config,
     load_stress_config,
 )
+from stress_evaluator import evaluate_verdict
 
 # ---------------------------------------------------------------------------
 # Dataclass default tests
@@ -452,13 +454,15 @@ class TestLoadStressConfig:
         config_file.write_text(json.dumps({"scenarios": []}))
         cfg = load_stress_config(config_file)
         assert cfg.scenarios == []
-        assert cfg.output_dir == "results"
+        # Must match default_stress_config(); runner_cli only scans this folder.
+        assert cfg.output_dir == TEST_RESULTS_FOLDER
 
     def test_default_output_dir(self, tmp_path: Path) -> None:
         config_file = tmp_path / "no_dir.json"
         config_file.write_text(json.dumps({"scenarios": [{"name": "s"}]}))
         cfg = load_stress_config(config_file)
-        assert cfg.output_dir == "results"
+        assert cfg.output_dir == TEST_RESULTS_FOLDER
+        assert cfg.output_dir == default_stress_config().output_dir
 
     def test_file_not_found(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
@@ -484,3 +488,97 @@ class TestLoadStressConfig:
         assert cfg.scenarios[0].name == "a"
         assert cfg.scenarios[1].name == "b"
         assert cfg.scenarios[1].command_profile == "mixed"
+
+
+class TestFaultFramesFromConfig:
+    """fault_frames are named recipes, because raw bytes cannot cross JSON."""
+
+    @staticmethod
+    def _write(tmp_path: Path, scenario: dict) -> Path:
+        config_file = tmp_path / "fi.json"
+        config_file.write_text(json.dumps({"scenarios": [scenario]}))
+        return config_file
+
+    def test_named_recipes_are_resolved_to_bytes(self, tmp_path: Path) -> None:
+        """Previously frames were dropped, so the scenario injected nothing."""
+        config_file = self._write(
+            tmp_path,
+            {
+                "name": "fi",
+                "command_profile": "fault_injection",
+                "fault_frames": ["bad_checksum", "too_short"],
+            },
+        )
+        cfg = load_stress_config(config_file)
+        frames = cfg.scenarios[0].fault_frames
+
+        assert frames == [
+            fault_frames.ALL_RECIPES["bad_checksum"],
+            fault_frames.ALL_RECIPES["too_short"],
+        ]
+        assert all(isinstance(f, bytes) and f for f in frames)
+
+    def test_every_builtin_recipe_is_loadable(self, tmp_path: Path) -> None:
+        """Any recipe the module ships can be named from a config file."""
+        names = sorted(fault_frames.ALL_RECIPES)
+        config_file = self._write(
+            tmp_path,
+            {"name": "fi", "command_profile": "fault_injection", "fault_frames": names},
+        )
+        cfg = load_stress_config(config_file)
+        assert len(cfg.scenarios[0].fault_frames) == len(names)
+
+    def test_omitted_fault_frames_stays_empty(self, tmp_path: Path) -> None:
+        """Scenarios that do not inject faults are unaffected."""
+        config_file = self._write(tmp_path, {"name": "echo"})
+        assert load_stress_config(config_file).scenarios[0].fault_frames == []
+
+    def test_unknown_recipe_fails_loudly(self, tmp_path: Path) -> None:
+        """A typo must not silently produce a scenario that always FAILs."""
+        config_file = self._write(
+            tmp_path,
+            {
+                "name": "fi",
+                "command_profile": "fault_injection",
+                "fault_frames": ["bad_cheksum"],
+            },
+        )
+        with pytest.raises(ValueError, match="unknown fault frame 'bad_cheksum'"):
+            load_stress_config(config_file)
+
+    def test_non_list_fault_frames_rejected(self, tmp_path: Path) -> None:
+        """A bare string is a common mistake and is not silently accepted."""
+        config_file = self._write(
+            tmp_path,
+            {"name": "fi", "fault_frames": "bad_checksum"},
+        )
+        with pytest.raises(TypeError, match="must be a list of recipe names"):
+            load_stress_config(config_file)
+
+    def test_loaded_fault_scenario_can_meet_expected_deltas(
+        self, tmp_path: Path
+    ) -> None:
+        """
+        The end-to-end trap: frames present means the verdict can pass.
+
+        With frames dropped, status_delta stayed empty while
+        expected_counter_deltas demanded 1, so the verdict was always FAIL.
+        """
+        config_file = self._write(
+            tmp_path,
+            {
+                "name": "fi_bad_checksum",
+                "command_profile": "fault_injection",
+                "fault_frames": ["bad_checksum"],
+                "thresholds": {
+                    "max_echo_drop_ratio": 1.0,
+                    "expected_counter_deltas": {"checksum_error": 1},
+                },
+            },
+        )
+        scenario = load_stress_config(config_file).scenarios[0]
+
+        assert scenario.fault_frames  # would have been [] before
+        verdict, reasons = evaluate_verdict(scenario, 0, 0, [], {"checksum_error": 1})
+        assert verdict == "PASS"
+        assert reasons == []

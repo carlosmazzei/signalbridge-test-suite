@@ -33,7 +33,7 @@ from stress_config import (
     StressConfig,
     default_stress_config,
 )
-from stress_evaluator import StressRunResult
+from stress_evaluator import ScenarioResult, StressRunResult
 from stress_test import StressTest
 
 # ---------------------------------------------------------------------------
@@ -362,9 +362,9 @@ class TestNoiseAndRecovery:
             patch("stress_test.time.perf_counter", side_effect=lambda: next(counter)),
         ):
             tester._run_noise_and_recovery(cfg.scenarios[0])
-        # Verify raw write was called on the underlying serial object
-        assert mock_serial.ser.write.call_count >= 1
-        written_bytes = mock_serial.ser.write.call_args_list[0][0][0]
+        # Noise goes through write_raw so it is serialized against framed traffic
+        assert mock_serial.write_raw.call_count >= 1
+        written_bytes = mock_serial.write_raw.call_args_list[0][0][0]
         assert len(written_bytes) == 32
 
     def test_publish_called_after_noise(self, mock_serial: Mock) -> None:
@@ -635,15 +635,26 @@ class TestFaultInjection:
         tester = self._make_fi_tester(mock_serial, frames)
         with patch("stress_test.time.sleep"):
             tester._run_fault_injection(tester.config.scenarios[0])
-        assert mock_serial.ser.write.call_count == 2
+        assert mock_serial.write_raw.call_count == 2
 
-    def test_status_snapshot_pre_and_post_per_frame(self, mock_serial: Mock) -> None:
+    def test_snapshot_reused_as_next_frames_baseline(self, mock_serial: Mock) -> None:
+        """Each frame's 'after' is the next frame's 'before': N+1, not 2N."""
         frames = [b"\x01\x00", b"\x01\x00", b"\x01\x00"]
         tester = self._make_fi_tester(mock_serial, frames)
         with patch("stress_test.time.sleep"):
             tester._run_fault_injection(tester.config.scenarios[0])
-        # pre + post for each of the 3 frames = 6 calls
-        assert tester._request_status_snapshot.call_count == 6
+        # 1 initial baseline + 1 post per frame = 4, down from 6.
+        assert tester._request_status_snapshot.call_count == len(frames) + 1
+
+    def test_snapshots_skip_task_requests(self, mock_serial: Mock) -> None:
+        """Only the statistics delta is consumed, so task polling is skipped."""
+        frames = [b"\x01\x00", b"\x01\x00"]
+        tester = self._make_fi_tester(mock_serial, frames)
+        with patch("stress_test.time.sleep"):
+            tester._run_fault_injection(tester.config.scenarios[0])
+        assert tester._request_status_snapshot.call_args_list
+        for call in tester._request_status_snapshot.call_args_list:
+            assert call.kwargs.get("include_tasks") is False
 
     def test_total_delta_accumulates_across_frames(self, mock_serial: Mock) -> None:
         frames = [b"\x01\x00", b"\x01\x00", b"\x01\x00"]
@@ -751,3 +762,71 @@ def test_execute_test_with_options_emits_progress_events(mock_serial: Mock) -> N
 
     assert any(evt["event"] == "scenario_started" for evt in events)
     assert any(evt["event"] == "scenario_finished" for evt in events)
+
+
+class TestScenarioFailureIsolation:
+    """A single broken scenario must not discard the whole run."""
+
+    @staticmethod
+    def _two_scenario_config() -> StressConfig:
+        return StressConfig(
+            scenarios=[
+                ScenarioConfig(
+                    name="boom",
+                    duration_s=1.0,
+                    command_profile="echo_only",
+                    num_messages=1,
+                ),
+                ScenarioConfig(
+                    name="fine",
+                    duration_s=1.0,
+                    command_profile="echo_only",
+                    num_messages=1,
+                ),
+            ]
+        )
+
+    def test_raising_scenario_becomes_fail_and_run_continues(
+        self, mock_serial: Mock
+    ) -> None:
+        """Previously the exception aborted before the report was written."""
+        tester = _make_tester(mock_serial, self._two_scenario_config())
+        real_runner = tester._run_scenario
+
+        def flaky(cfg: ScenarioConfig) -> ScenarioResult:
+            if cfg.name == "boom":
+                msg = "device exploded"
+                raise RuntimeError(msg)
+            return real_runner(cfg)
+
+        with (
+            patch.object(tester, "_run_scenario", side_effect=flaky),
+            patch("stress_test.write_json_report") as write_report,
+            patch("stress_test.print_summary"),
+            patch("stress_test.time.sleep"),
+        ):
+            result = tester.execute_test_with_options()
+
+        assert result is not None
+        # Both scenarios are represented, not just the one that survived.
+        assert [s.name for s in result.scenarios] == ["boom", "fine"]
+        failed = result.scenarios[0]
+        assert failed.verdict == "FAIL"
+        assert "RuntimeError" in failed.failure_reasons[0]
+        assert "device exploded" in failed.failure_reasons[0]
+        assert result.overall_verdict == "FAIL"
+        # The report is still persisted despite the failure.
+        write_report.assert_called_once()
+
+    def test_interactive_and_headless_share_one_implementation(
+        self, mock_serial: Mock
+    ) -> None:
+        """execute_test and execute_test_with_options must not drift apart."""
+        tester = _make_tester(mock_serial, self._two_scenario_config())
+        with (
+            patch.object(tester, "_execute_scenarios") as run,
+            patch.object(tester, "_show_options", return_value=[]),
+        ):
+            tester.execute_test()
+            tester.execute_test_with_options()
+        assert run.call_count == 2

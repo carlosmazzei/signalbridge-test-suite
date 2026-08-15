@@ -442,7 +442,10 @@ def test_plot_error_counter_details(visualize_results: VisualizeResults) -> None
         visualize_results.plot_error_counter_details(labels, error_counters)
 
         # --- Verify Figure ---
-        mock_figure.assert_called_with(figsize=(14, 10))
+        # assert_any_call, not assert_called_with: pyplot's gcf() lazily calls
+        # figure() again from tight_layout/subplots_adjust, so the figsize call
+        # is not necessarily the last one.
+        mock_figure.assert_any_call(figsize=(14, 10))
         mock_fig.suptitle.assert_called_with(
             "Detailed Error Counter Analysis - Before/After Test Series",
             fontsize=14,
@@ -701,6 +704,23 @@ def test_get_test_files(visualize_results: VisualizeResults) -> None:
     with patch("visualize_results.Path.glob", return_value=mock_files):
         files = visualize_results._get_test_files()
         assert files == mock_files
+
+
+def test_get_test_files_excludes_runner_summaries(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Test that _get_test_files ignores runner summary JSON files."""
+    mock_files = [
+        Path("20260426-103550-2783840a-latency.json"),
+        Path("20260426-103720-37ec50b4-runner.json"),
+        Path("20260426-104000-12345678-stress.json"),
+    ]
+    with patch("visualize_results.Path.glob", return_value=mock_files):
+        files = visualize_results._get_test_files()
+        assert files == [
+            Path("20260426-103550-2783840a-latency.json"),
+            Path("20260426-104000-12345678-stress.json"),
+        ]
 
 
 def test_get_page_files(visualize_results: VisualizeResults) -> None:

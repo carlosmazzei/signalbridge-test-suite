@@ -18,6 +18,8 @@
 from __future__ import annotations
 
 import logging
+import queue
+import threading
 from typing import TYPE_CHECKING, Any
 from unittest.mock import Mock, patch
 
@@ -25,7 +27,7 @@ import serial
 from cobs import cobs
 
 from checksum import calculate_checksum
-from serial_interface import SerialCommand, SerialInterface
+from serial_interface import SerialCommand, SerialInterface, SerialStatistics
 
 if TYPE_CHECKING:
     import pytest
@@ -158,7 +160,8 @@ def test_process_complete_message_success_calls_handler() -> None:
         called["raw"] = raw
 
     si.set_message_handler(handler)
-    decoded = b"\xaa" + bytes([SerialCommand.KEY_COMMAND.value]) + b"XYZ"
+    body = b"\xaa" + bytes([SerialCommand.KEY_COMMAND.value]) + b"XYZ"
+    decoded = body + calculate_checksum(body)
     raw = cobs.encode(decoded)
     si._process_complete_message(raw)
 
@@ -185,36 +188,33 @@ def test_process_complete_message_decode_error_logs(
 
 
 def test_handle_received_data_queue_and_rts_toggle() -> None:
-    """Test handling received data queues messages and toggles RTS based on buffer."""
+    """Received data is framed into the queue and RTS tracks consumer lag."""
     si = make_interface()
-    # Shrink watermarks for the test
-    si.BUFFER_HIGH_WATER = 3  # pyright: ignore[reportAttributeAccessIssue]
-    si.BUFFER_LOW_WATER = 1  # pyright: ignore[reportAttributeAccessIssue]
+    # Shrink watermarks so the test does not need thousands of frames.
+    si.QUEUE_HIGH_WATER = 2  # pyright: ignore[reportAttributeAccessIssue]
+    si.QUEUE_LOW_WATER = 1  # pyright: ignore[reportAttributeAccessIssue]
     ser_mock = Mock()
     ser_mock.rts = True
     si.ser = ser_mock
 
-    # Pre-fill buffer beyond high watermark so the first check disables RTS
-    si.buffer = bytearray(b"XXXX")
-    si._handle_received_data(
-        b"\x00", max_message_size=100
-    )  # Clear buffer, queue 'XXXX'
+    # Backlog past the high watermark: tell the sender to stop.
+    for _ in range(3):
+        si.message_queue.put(b"backlog")
+    si._handle_received_data(b"", max_message_size=100)
     assert ser_mock.rts is False
-    assert si.buffer == bytearray()
 
-    # Next call sees buffer below low watermark, enabling RTS
+    # Consumer catches up below the low watermark: allow sending again.
+    while not si.message_queue.empty():
+        si.message_queue.get_nowait()
     si._handle_received_data(b"", max_message_size=100)
     assert ser_mock.rts is True
 
-    # Send a valid message (COBS encoded + delimiter) and ensure it lands in queue
+    # A valid message (COBS encoded + delimiter) still lands in the queue.
     msg = cobs.encode(b"hi")
     si._handle_received_data(msg + b"\x00", max_message_size=100)
-    # First queued item was the prefill ('XXXX'), discard it
-    first = si.message_queue.get(timeout=0.5)
-    assert first == b"XXXX"
     out = si.message_queue.get(timeout=0.5)
     assert out == msg
-    assert si.statistics.bytes_received >= len(msg) + 1
+    assert si.statistics.snapshot()["bytes_received"] >= len(msg) + 1
 
 
 def test_handle_received_data_max_size_warning(
@@ -333,7 +333,8 @@ class TestProcessMessages:
 
         si.set_message_handler(handler)
 
-        decoded = b"\xaa" + bytes([SerialCommand.ECHO_COMMAND.value]) + b"payload"
+        body = b"\xaa" + bytes([SerialCommand.ECHO_COMMAND.value]) + b"payload"
+        decoded = body + calculate_checksum(body)
         raw = cobs.encode(decoded)
         si.message_queue.put(raw)
 
@@ -345,45 +346,69 @@ class TestProcessMessages:
 
 
 class TestFlowControlBoundaries:
-    """Test _handle_received_data at exact watermark boundaries."""
+    """RTS reacts to queue depth, at the exact watermark boundaries."""
 
-    def test_buffer_at_high_water_does_not_deassert_rts(self) -> None:
+    @staticmethod
+    def _with_pending(pending: int, *, rts: bool) -> tuple[SerialInterface, Mock]:
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.rts = rts
+        si.ser = ser_mock
+        for _ in range(pending):
+            si.message_queue.put(b"x")
+        return si, ser_mock
+
+    def test_queue_at_high_water_does_not_deassert_rts(self) -> None:
+        """Comparison is '>' so exactly at the watermark must not stop the sender."""
+        si, ser_mock = self._with_pending(SerialInterface.QUEUE_HIGH_WATER, rts=True)
+        si._handle_received_data(b"", max_message_size=2048)
+        assert ser_mock.rts is True
+
+    def test_queue_above_high_water_deasserts_rts(self) -> None:
+        """One frame past the watermark applies backpressure."""
+        si, ser_mock = self._with_pending(
+            SerialInterface.QUEUE_HIGH_WATER + 1, rts=True
+        )
+        si._handle_received_data(b"", max_message_size=2048)
+        assert ser_mock.rts is False
+
+    def test_queue_at_low_water_does_not_assert_rts(self) -> None:
+        """Comparison is '<' so exactly at the watermark must not release yet."""
+        si, ser_mock = self._with_pending(SerialInterface.QUEUE_LOW_WATER, rts=False)
+        si._handle_received_data(b"", max_message_size=2048)
+        assert ser_mock.rts is False
+
+    def test_queue_below_low_water_asserts_rts(self) -> None:
+        """Once the consumer catches up, the sender is released."""
+        si, ser_mock = self._with_pending(
+            SerialInterface.QUEUE_LOW_WATER - 1, rts=False
+        )
+        si._handle_received_data(b"", max_message_size=2048)
+        assert ser_mock.rts is True
+
+    def test_ordinary_frame_never_engages_flow_control(self) -> None:
         """
-        Buffer size == BUFFER_HIGH_WATER should NOT trigger RTS deassert.
+        The regression this fix targets.
 
-        The code uses '>' (strictly greater), so exactly at the watermark
-        should not deassert RTS.
+        Watermarks used to be compared against ``self.buffer``, the partial-frame
+        accumulator that is cleared at every delimiter. A normal ~12-byte frame
+        never came close to 768 bytes, so RTS effectively never engaged.
         """
         si = make_interface()
         ser_mock = Mock()
         ser_mock.rts = True
         si.ser = ser_mock
 
-        # Pre-fill buffer to exactly BUFFER_HIGH_WATER
-        si.buffer = bytearray(b"X" * si.BUFFER_HIGH_WATER)
-        si._handle_received_data(b"\x00", max_message_size=2048)
+        frame = cobs.encode(b"\x00\x34\x02\x01\x02") + b"\x00"
+        for _ in range(50):
+            si._handle_received_data(frame, max_message_size=2048)
 
-        # RTS should still be True (not deasserted) because == not >
+        # 50 undelivered frames is well below the queue watermark: no backpressure.
         assert ser_mock.rts is True
-
-    def test_buffer_at_low_water_does_not_assert_rts(self) -> None:
-        """
-        Buffer size == BUFFER_LOW_WATER should NOT trigger RTS assert.
-
-        The code uses '<' (strictly less), so exactly at the watermark
-        should not reassert RTS.
-        """
-        si = make_interface()
-        ser_mock = Mock()
-        ser_mock.rts = False  # Start with RTS deasserted
-        si.ser = ser_mock
-
-        # Pre-fill buffer to exactly BUFFER_LOW_WATER
-        si.buffer = bytearray(b"X" * si.BUFFER_LOW_WATER)
-        si._handle_received_data(b"\x00", max_message_size=2048)
-
-        # RTS should remain False because == not <
-        assert ser_mock.rts is False
+        assert si.message_queue.qsize() == 50
+        # And the accumulator is empty between frames, which is why it was useless
+        # as a backpressure signal.
+        assert si.buffer == bytearray()
 
 
 class TestWriteEncoding:
@@ -484,3 +509,149 @@ def test_threads_are_daemon() -> None:
     si = make_interface()
     assert si.read_thread.daemon is True
     assert si.processing_thread.daemon is True
+
+
+class TestResilienceFixes:
+    """Regression tests for the resilience and thread-safety hardening."""
+
+    def test_close_without_start_reading_does_not_raise(self) -> None:
+        """close() must tolerate threads that were never started."""
+        si = make_interface()
+        si.ser = Mock()
+        # Threads are constructed in __init__ but never started; joining an
+        # unstarted thread raises RuntimeError, so close() must skip them.
+        si.close()
+        si.ser.close.assert_called_once()
+
+    def test_close_gives_up_on_wedged_thread(self) -> None:
+        """A thread that never stops is abandoned instead of hanging close()."""
+        si = make_interface()
+        si.ser = Mock()
+        stuck = Mock()
+        stuck.is_alive.return_value = True
+        stuck.name = "stuck-thread"
+        si.read_thread = stuck
+        si.processing_thread = None  # type: ignore[assignment]
+
+        si.close()
+
+        stuck.join.assert_called_once_with(timeout=SerialInterface.JOIN_TIMEOUT_S)
+        si.ser.close.assert_called_once()
+
+    def test_write_swallows_timeout_exception(self) -> None:
+        """A full output buffer must not propagate into the caller's loop."""
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.write.side_effect = serial.SerialTimeoutException("full")
+        si.ser = ser_mock
+
+        si.write(b"\x00\x34\x02\x01\x02")  # must not raise
+
+    def test_write_swallows_serial_exception(self) -> None:
+        """A disconnected cable must not propagate into the caller's loop."""
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.write.side_effect = serial.SerialException("gone")
+        si.ser = ser_mock
+
+        si.write(b"\x00\x34\x02\x01\x02")  # must not raise
+
+    def test_write_raw_bypasses_framing_and_counts_bytes(self) -> None:
+        """write_raw puts bytes on the wire verbatim and tracks them."""
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.write.side_effect = len
+        si.ser = ser_mock
+
+        payload = bytes([0x01] * 26)
+        si.write_raw(payload)
+
+        ser_mock.write.assert_called_once_with(payload)
+        ser_mock.flush.assert_called_once()
+        assert si.statistics.snapshot()["bytes_sent"] == len(payload)
+
+    def test_write_raw_swallows_serial_exception(self) -> None:
+        """Raw injection failures are logged, not raised."""
+        si = make_interface()
+        ser_mock = Mock()
+        ser_mock.write.side_effect = serial.SerialException("gone")
+        si.ser = ser_mock
+
+        si.write_raw(b"\x01\x02")  # must not raise
+
+    def test_full_queue_drops_frame_instead_of_blocking(self) -> None:
+        """A saturated queue sheds frames rather than stalling the read thread."""
+        si = make_interface()
+        si.message_queue = queue.Queue(maxsize=1)
+
+        si._enqueue_message(b"first")
+        si._enqueue_message(b"second")  # dropped, must not block
+
+        assert si.message_queue.qsize() == 1
+        assert si.statistics.snapshot()["dropped_frames"] == 1
+
+    def test_checksum_mismatch_dropped_by_default(self) -> None:
+        """Verification is on by default, so a corrupt frame is not delivered."""
+        si = make_interface()
+        assert si.verify_checksum is True
+        seen: list[int] = []
+        si.set_message_handler(lambda cmd, _d, _r: seen.append(cmd))
+
+        body = bytes([0x00, SerialCommand.KEY_COMMAND.value, 0x02, 0x11])
+        frame = cobs.encode(body + b"\xff")  # deliberately wrong checksum
+        si._process_complete_message(frame)
+
+        assert seen == []
+        assert si.statistics.snapshot()["checksum_mismatches"] == 1
+        # A dropped frame must not inflate the received-command counters.
+        assert si.statistics.snapshot()["commands_received"] == {}
+
+    def test_checksum_mismatch_dispatched_when_verification_disabled(self) -> None:
+        """The opt-out still counts mismatches but keeps delivering frames."""
+        si = SerialInterface(
+            port="COM1", baudrate=115200, timeout=0.1, verify_checksum=False
+        )
+        seen: list[int] = []
+        si.set_message_handler(lambda cmd, _d, _r: seen.append(cmd))
+
+        body = bytes([0x00, SerialCommand.KEY_COMMAND.value, 0x02, 0x11])
+        frame = cobs.encode(body + b"\xff")
+        si._process_complete_message(frame)
+
+        assert seen == [SerialCommand.KEY_COMMAND.value]
+        assert si.statistics.snapshot()["checksum_mismatches"] == 1
+
+    def test_valid_checksum_dispatched(self) -> None:
+        """A correctly checksummed frame passes verification."""
+        si = make_interface()
+        seen: list[int] = []
+        si.set_message_handler(lambda cmd, _d, _r: seen.append(cmd))
+
+        body = bytes([0x00, SerialCommand.KEY_COMMAND.value, 0x02, 0x11])
+        frame = cobs.encode(body + calculate_checksum(body))
+        si._process_complete_message(frame)
+
+        assert seen == [SerialCommand.KEY_COMMAND.value]
+        assert si.statistics.snapshot()["checksum_mismatches"] == 0
+
+    def test_statistics_snapshot_stable_under_concurrent_writes(self) -> None:
+        """snapshot() must not raise while another thread adds command keys."""
+        stats = SerialStatistics()
+        stop = threading.Event()
+
+        def writer() -> None:
+            command = 0
+            while not stop.is_set():
+                stats.record_received_command(command % 32)
+                command += 1
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        try:
+            for _ in range(2000):
+                # Iterating the live defaultdict here would raise
+                # "dictionary changed size during iteration".
+                assert isinstance(stats.snapshot()["commands_received"], dict)
+        finally:
+            stop.set()
+            thread.join(timeout=5)

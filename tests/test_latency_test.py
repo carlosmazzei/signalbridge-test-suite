@@ -32,6 +32,7 @@ from base_test import (
     DEFAULT_SAMPLES,
     DEFAULT_WAIT_TIME,
     HEADER_BYTES,
+    MAX_SAMPLE_SIZE,
 )
 from latency_test import (
     DEFAULT_MIN_WAIT,
@@ -40,6 +41,27 @@ from latency_test import (
 )
 from result_format import FORMAT_LATENCY_SERIES
 from serial_interface import SerialCommand, SerialInterface
+
+
+class DummyBar:
+    """
+    Stand-in for ``alive_bar`` in tests that drive a full test loop.
+
+    The real progress bar resolves ``sys.stdout.fileno()`` on entry, which
+    raises ``ValueError: I/O operation on closed file`` under runners that
+    close stdout (notably ``mutmut``'s clean-test pass). Any test that calls
+    ``main_test`` must patch ``latency_test.alive_bar`` with this.
+    """
+
+    def __init__(self, *_: Any, **__: Any) -> None:
+        """Accept and ignore whatever alive_bar was called with."""
+
+    def __enter__(self) -> Any:
+        """Return a no-op progress callback."""
+        return lambda: None
+
+    def __exit__(self, *_: object) -> None:
+        """Nothing to tear down."""
 
 
 @pytest.fixture
@@ -315,15 +337,6 @@ def test_main_test_collects_and_writes_output() -> None:
     mock_ser.baudrate = 115200
     tester = LatencyTest(mock_ser)
 
-    # Replace progress bar with a no-op context manager
-    class DummyBar:
-        def __init__(self, *_: Any, **__: Any) -> None: ...
-        def __enter__(self) -> Any:
-            return lambda: None
-
-        def __exit__(self, *_: object) -> None:
-            return None
-
     # Use a monotonic counter for perf_counter to avoid zero elapsed time
     t = {"v": 0.0}
 
@@ -390,14 +403,6 @@ def test_main_test_with_jitter_path() -> None:
     mock_ser = Mock(spec=SerialInterface)
     mock_ser.baudrate = 115200
     tester = LatencyTest(mock_ser)
-
-    class DummyBar:
-        def __init__(self, *_: Any, **__: Any) -> None: ...
-        def __enter__(self) -> Any:
-            return lambda: None
-
-        def __exit__(self, *_: object) -> None:
-            return None
 
     t = {"v": 0.0}
 
@@ -542,14 +547,6 @@ def test_main_test_nonzero_wait_values() -> None:
     mock_ser.baudrate = 115200
     tester = LatencyTest(mock_ser)
 
-    class DummyBar:
-        def __init__(self, *_: Any, **__: Any) -> None: ...
-        def __enter__(self) -> Any:
-            return lambda: None
-
-        def __exit__(self, *_: object) -> None:
-            return None
-
     t = {"v": 0.0}
 
     def fake_perf_counter() -> float:
@@ -587,3 +584,51 @@ def test_main_test_nonzero_wait_values() -> None:
     wait_0 = out[0]["waiting_time"]
     wait_1 = out[1]["waiting_time"]
     assert wait_0 != pytest.approx(wait_1, abs=1e-9)
+
+
+class TestRunSizeValidation:
+    """Guards on iteration and sample counts."""
+
+    def test_single_iteration_does_not_divide_by_zero(
+        self, latency_tester: LatencyTest
+    ) -> None:
+        """num_times=1 made the ramp compute j / (num_times - 1)."""
+        tester = latency_tester
+        tester.ser.baudrate = 115200
+        with (
+            patch("latency_test.alive_bar", DummyBar),
+            patch.object(tester, "_request_status_snapshot", return_value={}),
+            patch.object(tester, "_calculate_status_delta", return_value={}),
+            patch.object(tester, "_write_output_to_file"),
+            patch("latency_test.time.sleep"),
+        ):
+            # Must complete instead of raising ZeroDivisionError.
+            tester.main_test(num_times=1, samples=2, wait_time=0, length=6)
+
+    @pytest.mark.parametrize("num_times", [0, -1])
+    def test_non_positive_num_times_falls_back(self, num_times: int) -> None:
+        """Zero or negative iteration counts fall back to the default."""
+        resolved, _ = LatencyTest._validate_run_size(num_times, 255)
+        assert resolved == DEFAULT_NUM_TIMES
+
+    @pytest.mark.parametrize("samples", [0, -5, MAX_SAMPLE_SIZE, MAX_SAMPLE_SIZE + 1])
+    def test_out_of_range_samples_falls_back(self, samples: int) -> None:
+        """publish() packs the counter into two bytes, so 65536 would overflow."""
+        _, resolved = LatencyTest._validate_run_size(5, samples)
+        assert resolved == DEFAULT_SAMPLES
+
+    def test_in_range_values_pass_through(self) -> None:
+        """Valid values are left untouched."""
+        assert LatencyTest._validate_run_size(3, 100) == (3, 100)
+        assert LatencyTest._validate_run_size(1, MAX_SAMPLE_SIZE - 1) == (
+            1,
+            MAX_SAMPLE_SIZE - 1,
+        )
+
+    def test_oversized_samples_would_overflow_publish(
+        self, latency_tester: LatencyTest
+    ) -> None:
+        """Documents why the ceiling exists."""
+        tester = latency_tester
+        with pytest.raises(OverflowError):
+            tester.publish(MAX_SAMPLE_SIZE, 10)

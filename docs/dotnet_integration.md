@@ -153,7 +153,7 @@ event-specific fields.
 | `event` | Emitted | Key fields |
 | --- | --- | --- |
 | `run_started` | once, before the mode runs | `mode`, `port`, `baudrate`, `timeout` |
-| `heartbeat` | every `--feedback-interval-ms` while active (skipped if interval is `0`) | `mode`, `elapsed_s`, `bytes_sent`, `bytes_received`, `commands_sent` (dict keyed by command id), `commands_received`, plus tester-specific counters when available: `latency_sent`, `latency_received`, `scenarios_completed` |
+| `heartbeat` | every `--feedback-interval-ms` while active (skipped if interval is `0`) | `mode`, `elapsed_s`, `bytes_sent`, `bytes_received`, `commands_sent` (dict keyed by command id), `commands_received`, `dropped_frames`, `checksum_mismatches`, plus tester-specific counters when available: `latency_sent`, `latency_received`, `scenarios_completed` |
 | `mode_started` | once, mode-specific setup complete | `mode` |
 | `stress_progress` | `stress` mode only, per scenario transition | `mode`, `stress_event` (`scenario_started` \| `scenario_finished`), `scenario_name`, `scenario_index`, `total_scenarios`, and on `scenario_finished`: `verdict`, `drop_ratio`, `p95_ms` |
 | `mode_finished` | once, mode work complete | `mode`; `stress` mode also includes `overall_verdict` |
@@ -164,6 +164,27 @@ event-specific fields.
 > name under `stress_event` rather than `event`, because `event` is already
 > the sink's envelope key. Do not assume `stress_progress` records reuse
 > `event` for the sub-event name.
+
+> **Heartbeat counters added:** `dropped_frames` counts frames shed because
+> the receive queue was saturated, and `checksum_mismatches` counts frames
+> whose trailing XOR byte did not match the payload. Both are cumulative for
+> the process. A non-zero `dropped_frames` means the run's own tooling could
+> not keep up and the latency/drop figures understate device performance.
+> Treat `checksum_mismatches` as diagnostic only for now — see §8.
+
+### 6.1 Scenario failures no longer abort a stress run
+
+A stress scenario that raises is recorded as a normal `ScenarioResult` with
+`verdict` `"FAIL"` and a single entry in `failure_reasons` of the form
+`scenario raised <ExceptionType>: <message>`; the run then continues with the
+remaining scenarios and still writes its report. Previously the exception
+propagated out of the run, so **no** report was written and the results of
+every scenario that had already completed were lost — the process just exited
+non-zero.
+
+Callers should therefore expect `failure_reasons` strings that describe a
+harness-side error rather than a threshold breach. The distinguishing marker
+is the `scenario raised ` prefix.
 
 ## 7. Result file envelope format
 
@@ -205,8 +226,63 @@ guarantee.
   this as a prerequisite if regression-mode automation is required.
 - **Exit code carries no verdict information** (§4) — always parse the
   summary/result JSON.
+- **Frames dropped by checksum verification are invisible to the mode's own
+  counters.** Verification is on (see §10), so a corrupted reply is discarded
+  before it reaches the test mode. It therefore shows up as a *dropped* echo
+  in `drop_ratio`, not as an error — the only direct signal is the
+  `checksum_mismatches` heartbeat counter (§6). When diagnosing an unexpected
+  `drop_ratio`, read that counter before assuming the device failed to reply.
 
-## 9. Keeping this document in sync
+## 9. `--stress-config` file format
+
+The JSON passed to `--stress-config` maps onto `stress_config.StressConfig`.
+Two fields need care:
+
+- **`output_dir`** defaults to `test_results`, matching the built-in config.
+  The runner discovers `result_file` by diffing `test_results/` before and
+  after the run, so pointing this elsewhere makes `result_file` come back
+  `null` even though the report was written.
+- **`fault_frames`** is a list of **recipe names**, not raw bytes — byte
+  sequences cannot round-trip through JSON. Names are resolved against
+  `fault_frames.ALL_RECIPES`: `empty_frame`, `too_short`, `size_mismatch`,
+  `unknown_id`, `bad_checksum`, `payload_overflow`, `single_overflow`,
+  `double_overflow_empty`. An unknown name fails the load with a `ValueError`
+  naming the valid recipes, rather than silently yielding a scenario that
+  injects nothing and then always reports `FAIL` against its
+  `expected_counter_deltas`.
+
+```json
+{
+  "output_dir": "test_results",
+  "scenarios": [
+    {
+      "name": "fi_bad_checksum",
+      "command_profile": "fault_injection",
+      "pacing_s": 0.05,
+      "fault_frames": ["bad_checksum"],
+      "thresholds": {
+        "max_echo_drop_ratio": 1.0,
+        "expected_counter_deltas": {"checksum_error": 1}
+      }
+    }
+  ]
+}
+```
+
+## 10. Receive-path checksum verification
+
+`SerialInterface` verifies the trailing XOR checksum on every decoded frame
+and drops mismatches; the wire format is symmetric
+(`COBS_ENCODE(body + XOR_checksum) + 0x00`) in both directions. Every
+mismatch increments `checksum_mismatches`, reported on each heartbeat (§6).
+
+A dropped frame is never dispatched to the test mode and never counted in
+`commands_received`, so corrupted traffic can no longer inflate latency
+samples or mask a real drop. Construct `SerialInterface(...,
+verify_checksum=False)` to fall back to counting mismatches without dropping —
+useful when bringing up firmware whose reply framing is still changing.
+
+## 11. Keeping this document in sync
 
 This file is a **contract**, not incidental documentation. Whenever a change
 touches the headless surface — `src/runner_cli.py` (CLI flags, stdout

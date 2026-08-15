@@ -32,12 +32,15 @@ class _Dispatch:
 
     listener: logging.handlers.QueueListener | None = None
     atexit_registered: bool = False
+    configured: bool = False
 
 
 def setup_logging(
     default_path: str = "logging_config.ini",
     default_level: int = logging.INFO,
     env_key: str = "LOG_CFG",
+    *,
+    force: bool = False,
 ) -> None:
     """
     Configure logging with a non-blocking, queue-based dispatcher.
@@ -45,7 +48,15 @@ def setup_logging(
     Loggers receive a single `QueueHandler` that enqueues records and returns
     immediately; a background `QueueListener` thread owns the real I/O
     handlers so stdout/file writes never block producer threads.
+
+    Configuration happens once per process. Eight modules call this at import
+    time, and every call re-reads the ini file, re-opens the log handlers, and
+    tears down and restarts the listener thread -- so repeat calls are ignored
+    unless ``force=True``.
     """
+    if _Dispatch.configured and not force:
+        return
+
     path: Path = Path(__file__).parent.parent / default_path
     value = os.getenv(env_key, None)
     if value:
@@ -58,6 +69,7 @@ def setup_logging(
 
     _install_queue_dispatch()
     _rebind_stdout_handlers()
+    _Dispatch.configured = True
 
 
 class _LateBoundStdout:

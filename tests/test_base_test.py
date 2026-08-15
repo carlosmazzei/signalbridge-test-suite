@@ -31,6 +31,7 @@ from base_test import (
     HEADER_BYTES,
     STATISTICS_HEADER_BYTES,
     STATISTICS_ITEMS,
+    STATUS_REQUEST_SPACING_S,
     TASK_HEADER_BYTES,
     TASK_ITEMS,
     BaseTest,
@@ -903,3 +904,145 @@ class TestStatusDeltaMissingKeys:
         # Other stats should be 0 - 0 = 0
         second_stat = list(STATISTICS_ITEMS.values())[1]
         assert delta["statistics"][second_stat] == 0
+
+
+class TestBooleanPromptParsing:
+    """Boolean prompts must be parseable as words, not cast via bool()."""
+
+    @pytest.mark.parametrize(
+        ("entered", "expected"),
+        [
+            ("False", False),
+            ("false", False),
+            ("no", False),
+            ("n", False),
+            ("0", False),
+            ("anything else", False),
+            ("True", True),
+            ("true", True),
+            ("yes", True),
+            ("y", True),
+            ("1", True),
+            ("  TRUE  ", True),
+        ],
+    )
+    def test_bool_input_parsed_by_word(self, entered: str, *, expected: bool) -> None:
+        """bool("False") is True, so a plain cast would make "no" impossible."""
+        base = BaseTest(Mock())
+        with patch("base_test.console.input", return_value=entered):
+            assert base._get_user_input("Enable?", default_value=False) is expected
+
+    def test_bool_empty_input_keeps_default(self) -> None:
+        """An empty answer keeps whichever default was offered."""
+        base = BaseTest(Mock())
+        with patch("base_test.console.input", return_value=""):
+            assert base._get_user_input("Enable?", default_value=True) is True
+            assert base._get_user_input("Enable?", default_value=False) is False
+
+    def test_invalid_numeric_input_falls_back_to_default(self) -> None:
+        """A non-numeric answer must not abort the whole mode."""
+        base = BaseTest(Mock())
+        with patch("base_test.console.input", return_value="abc"):
+            assert base._get_user_input("Samples", 255) == 255
+            assert base._get_user_input("Wait", 1.5) == 1.5
+
+    def test_valid_numeric_input_still_cast(self) -> None:
+        """Normal numeric entry keeps working."""
+        base = BaseTest(Mock())
+        with patch("base_test.console.input", return_value="42"):
+            assert base._get_user_input("Samples", 255) == 42
+
+
+class TestLatencyThreadSafety:
+    """The latency dicts are written from the processing thread."""
+
+    def test_snapshot_stable_while_echoes_arrive(self) -> None:
+        """_latency_snapshot must not raise while handle_message inserts."""
+        base = BaseTest(Mock())
+        stop = threading.Event()
+
+        def writer() -> None:
+            counter = 0
+            while not stop.is_set():
+                # Cycle over a bounded key range: an ever-growing dict would
+                # make each snapshot copy progressively slower, not more racy.
+                key = counter % 64
+                with base._latency_lock:
+                    base.latency_msg_sent[key] = 0.0
+                    base.latency_msg_received[key] = 0.001
+                    if key == 0:
+                        base.latency_msg_sent.clear()
+                        base.latency_msg_received.clear()
+                counter += 1
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        try:
+            for _ in range(2000):
+                # Copying the live dict here would raise
+                # "dictionary changed size during iteration".
+                latencies, sent, received = base._latency_snapshot()
+                assert len(latencies) == received
+                assert sent >= received
+        finally:
+            stop.set()
+            thread.join(timeout=5)
+
+    def test_reset_clears_both_dicts(self) -> None:
+        """_reset_latency replaces the paired clear() calls."""
+        base = BaseTest(Mock())
+        base.latency_msg_sent[1] = 0.0
+        base.latency_msg_received[1] = 0.5
+
+        base._reset_latency()
+
+        assert base._latency_snapshot() == ([], 0, 0)
+
+
+class TestStatusSnapshotCost:
+    """Pacing dominates snapshot cost, so the request count matters."""
+
+    @staticmethod
+    def _tester() -> BaseTest:
+        base = BaseTest(Mock(spec=SerialInterface))
+        # Mark every slot as fresh so the collection loop exits immediately.
+        for idx in STATISTICS_ITEMS:
+            base._statistics_updated_at[idx] = float("inf")
+        for idx in TASK_ITEMS:
+            base._task_updated_at[idx] = float("inf")
+        return base
+
+    def test_full_snapshot_requests_every_item(self) -> None:
+        """The default still polls all statistics and task slots."""
+        base = self._tester()
+        with patch.object(base, "_status_update") as upd, patch("base_test.time.sleep"):
+            result = base._request_status_snapshot()
+        assert upd.call_count == len(STATISTICS_ITEMS) + len(TASK_ITEMS)
+        assert result["complete"] is True
+        assert set(result["tasks"]) == set(TASK_ITEMS.values())
+
+    def test_stats_only_snapshot_skips_task_requests(self) -> None:
+        """include_tasks=False drops the per-task round-trips entirely."""
+        base = self._tester()
+        with patch.object(base, "_status_update") as upd, patch("base_test.time.sleep"):
+            result = base._request_status_snapshot(include_tasks=False)
+        assert upd.call_count == len(STATISTICS_ITEMS)
+        assert result["tasks"] == {}
+        # Completeness must not be judged against tasks that were never asked for.
+        assert result["complete"] is True
+        assert result["received"]["tasks"] == 0
+
+    def test_no_trailing_sleep_after_last_request(self) -> None:
+        """The gap is only needed between requests, not after the final one."""
+        base = self._tester()
+        with (
+            patch.object(base, "_status_update"),
+            patch("base_test.time.sleep") as sleep_mock,
+        ):
+            base._request_status_snapshot(include_tasks=False)
+        pacing_sleeps = [
+            c
+            for c in sleep_mock.call_args_list
+            if c.args == (STATUS_REQUEST_SPACING_S,)
+        ]
+        assert len(pacing_sleeps) == len(STATISTICS_ITEMS) - 1

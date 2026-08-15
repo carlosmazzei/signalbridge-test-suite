@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import queue
+import threading
 from io import StringIO
 from unittest.mock import Mock, patch
 
@@ -429,3 +431,79 @@ class TestExecuteCommandModeAdditional:
             command_mode.execute_command_mode()
 
         assert command_mode.running is False
+
+
+class TestDisplayThreadResilience:
+    """A malformed frame must not kill the display thread."""
+
+    @staticmethod
+    def _make_mode() -> CommandMode:
+        ser = Mock(spec=SerialInterface)
+        ser.is_open.return_value = True
+        return CommandMode(ser)
+
+    def test_undecodable_frame_does_not_raise(self) -> None:
+        """cobs.decode() raised DecodeError straight out of the handler."""
+        mode = self._make_mode()
+        # b"\x00" is not a valid COBS body.
+        mode._handle_message(SerialCommand.ECHO_COMMAND.value, b"\x00\x34", b"\x00")
+
+    def test_truncated_key_frame_does_not_raise(self) -> None:
+        """A KEY frame shorter than 4 bytes used to raise IndexError."""
+        mode = self._make_mode()
+        mode._print_decoded_message(
+            bytes([0x00, SerialCommand.KEY_COMMAND.value, 0x00])
+        )
+
+    def test_truncated_analog_frame_does_not_raise(self) -> None:
+        """An ANALOG frame shorter than 6 bytes used to raise IndexError."""
+        mode = self._make_mode()
+        mode._print_decoded_message(
+            bytes([0x00, SerialCommand.ANALOG_COMMAND.value, 0x00, 0x01])
+        )
+
+    def test_frame_shorter_than_header_does_not_raise(self) -> None:
+        """Even a 1-byte frame must be handled."""
+        mode = self._make_mode()
+        mode._print_decoded_message(b"\x00")
+
+    def test_process_messages_survives_handler_exception(self) -> None:
+        """The loop keeps draining after a frame that blows up."""
+        mode = self._make_mode()
+        mode.running = True
+        seen: list[int] = []
+
+        def handler(command: int, _decoded: bytes, _raw: bytes) -> None:
+            if command == 1:
+                msg = "bad frame"
+                raise ValueError(msg)
+            seen.append(command)
+            if command == 3:
+                mode.running = False
+
+        with patch.object(mode, "_handle_message", side_effect=handler):
+            mode.handle_message(1, b"", b"")  # raises inside the loop
+            mode.handle_message(2, b"", b"")
+            mode.handle_message(3, b"", b"")
+            # daemon=True so a mutant that breaks the loop's exit condition
+            # cannot leave a live thread holding the interpreter open.
+            thread = threading.Thread(target=mode._process_messages, daemon=True)
+            thread.start()
+            try:
+                thread.join(timeout=5)
+            finally:
+                mode.running = False
+
+        assert not thread.is_alive()
+        # Frames after the exception were still processed.
+        assert seen == [2, 3]
+
+    def test_full_queue_drops_instead_of_blocking(self) -> None:
+        """handle_message runs on the serial thread and must never block."""
+        mode = self._make_mode()
+        mode.message_queue = queue.Queue(maxsize=1)
+
+        mode.handle_message(1, b"", b"")
+        mode.handle_message(2, b"", b"")  # dropped, must return immediately
+
+        assert mode.message_queue.qsize() == 1

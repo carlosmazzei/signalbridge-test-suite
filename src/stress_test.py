@@ -162,52 +162,7 @@ class StressTest(BaseTest):
             logger.info("Test interrupted by user")
             return None
 
-        started_at = datetime.now(UTC).isoformat()
-        logger.info(
-            "Starting stress run %s — %d scenario(s)",
-            self._run_id,
-            len(selected_scenarios),
-        )
-
-        self._scenario_results = []
-        total = len(selected_scenarios)
-        for idx, cfg in enumerate(selected_scenarios, start=1):
-            self._emit_progress(
-                "scenario_started",
-                scenario_name=cfg.name,
-                scenario_index=idx,
-                total_scenarios=total,
-            )
-            logger.info("=== Scenario: %s ===", cfg.name)
-            result = self._run_scenario(cfg)
-            self._scenario_results.append(result)
-            logger.info("Scenario '%s' finished: verdict=%s", cfg.name, result.verdict)
-            self._emit_progress(
-                "scenario_finished",
-                scenario_name=cfg.name,
-                scenario_index=idx,
-                total_scenarios=total,
-                verdict=result.verdict,
-                drop_ratio=result.drop_ratio,
-                p95_ms=result.p95_ms,
-            )
-
-        ended_at = datetime.now(UTC).isoformat()
-        overall = aggregate_verdict(self._scenario_results)
-        run_result = StressRunResult(
-            run_id=self._run_id,
-            port=self.ser.port,
-            baudrate=self.ser.baudrate,
-            started_at=started_at,
-            ended_at=ended_at,
-            scenarios=self._scenario_results,
-            overall_verdict=overall,
-        )
-
-        report_path = write_json_report(run_result, self.config.output_dir)
-        logger.info("JSON report: %s", report_path)
-        print_summary(run_result)
-        return run_result
+        return self._execute_scenarios(selected_scenarios)
 
     def execute_test_with_options(
         self,
@@ -219,8 +174,18 @@ class StressTest(BaseTest):
             logger.info("No serial port found. Quitting test.")
             return None
 
-        selected_scenarios = self._resolve_selected_scenarios(scenario_names)
+        return self._execute_scenarios(self._resolve_selected_scenarios(scenario_names))
 
+    def _execute_scenarios(
+        self, selected_scenarios: list[ScenarioConfig]
+    ) -> StressRunResult:
+        """
+        Run the given scenarios, aggregate them, and persist the report.
+
+        A scenario that raises is recorded as a FAIL result and the run
+        continues, so one broken scenario cannot discard the results of every
+        scenario that already completed.
+        """
         started_at = datetime.now(UTC).isoformat()
         logger.info(
             "Starting stress run %s — %d scenario(s)",
@@ -238,7 +203,12 @@ class StressTest(BaseTest):
                 total_scenarios=total,
             )
             logger.info("=== Scenario: %s ===", cfg.name)
-            result = self._run_scenario(cfg)
+            scenario_started_at = datetime.now(UTC).isoformat()
+            try:
+                result = self._run_scenario(cfg)
+            except Exception as exc:  # One scenario must not abort the whole run
+                logger.exception("Scenario '%s' raised; recording FAIL", cfg.name)
+                result = self._make_error_result(cfg, scenario_started_at, exc)
             self._scenario_results.append(result)
             logger.info("Scenario '%s' finished: verdict=%s", cfg.name, result.verdict)
             self._emit_progress(
@@ -267,6 +237,30 @@ class StressTest(BaseTest):
         logger.info("JSON report: %s", report_path)
         print_summary(run_result)
         return run_result
+
+    def _make_error_result(
+        self, cfg: ScenarioConfig, started_at: str, exc: Exception
+    ) -> ScenarioResult:
+        """Build a FAIL ScenarioResult describing a scenario that raised."""
+        return ScenarioResult(
+            name=cfg.name,
+            run_id=self._run_id,
+            started_at=started_at,
+            ended_at=datetime.now(UTC).isoformat(),
+            command_profile=cfg.command_profile,
+            messages_sent=0,
+            messages_received=0,
+            drop_ratio=0.0,
+            latencies_ms=[],
+            p50_ms=0.0,
+            p95_ms=0.0,
+            p99_ms=0.0,
+            status_delta={},
+            task_snapshot={},
+            verdict="FAIL",
+            failure_reasons=[f"scenario raised {type(exc).__name__}: {exc}"],
+            tags=cfg.tags,
+        )
 
     # ------------------------------------------------------------------
     # Scenario dispatcher
@@ -303,8 +297,7 @@ class StressTest(BaseTest):
     def _run_echo_burst(self, cfg: ScenarioConfig) -> ScenarioResult:
         """Send cfg.num_messages echo commands with cfg.pacing_s gap each."""
         started_at = datetime.now(UTC).isoformat()
-        self.latency_msg_sent.clear()
-        self.latency_msg_received.clear()
+        self._reset_latency()
 
         pre = self._request_status_snapshot()
 
@@ -321,14 +314,15 @@ class StressTest(BaseTest):
         post = self._request_status_snapshot()
         ended_at = datetime.now(UTC).isoformat()
 
-        latencies_ms = [v * 1e3 for v in self.latency_msg_received.values()]
+        latencies, sent_count, received_count = self._latency_snapshot()
+        latencies_ms = [v * 1e3 for v in latencies]
         delta = self._calculate_status_delta(pre, post)
         return self._make_result(
             cfg,
             started_at=started_at,
             ended_at=ended_at,
-            messages_sent=len(self.latency_msg_sent),
-            messages_received=len(self.latency_msg_received),
+            messages_sent=sent_count,
+            messages_received=received_count,
             latencies_ms=latencies_ms,
             status_delta=delta["statistics"],
             task_snapshot=post.get("tasks", {}),
@@ -337,8 +331,7 @@ class StressTest(BaseTest):
     def _run_mixed_command_burst(self, cfg: ScenarioConfig) -> ScenarioResult:
         """Randomly interleave echo, statistics, and task status requests."""
         started_at = datetime.now(UTC).isoformat()
-        self.latency_msg_sent.clear()
-        self.latency_msg_received.clear()
+        self._reset_latency()
 
         pre = self._request_status_snapshot()
         echo_counter = 0
@@ -350,9 +343,7 @@ class StressTest(BaseTest):
                     self.publish(echo_counter, cfg.message_length)
                     echo_counter += 1
                 elif cmd == SerialCommand.STATISTICS_STATUS_COMMAND:
-                    has_items = hasattr(self, "STATISTICS_ITEMS")
-                    items_len = len(self.STATISTICS_ITEMS) if has_items else 0
-                    idx = i % items_len if items_len > 0 else 0
+                    idx = i % len(STATISTICS_ITEMS)
                     self._status_update(STATISTICS_HEADER_BYTES, idx)
                 else:
                     idx = i % len(TASK_ITEMS)
@@ -365,14 +356,15 @@ class StressTest(BaseTest):
 
         post = self._request_status_snapshot()
         ended_at = datetime.now(UTC).isoformat()
-        latencies_ms = [v * 1e3 for v in self.latency_msg_received.values()]
+        latencies, _, received_count = self._latency_snapshot()
+        latencies_ms = [v * 1e3 for v in latencies]
         delta = self._calculate_status_delta(pre, post)
         return self._make_result(
             cfg,
             started_at=started_at,
             ended_at=ended_at,
             messages_sent=echo_counter,
-            messages_received=len(self.latency_msg_received),
+            messages_received=received_count,
             latencies_ms=latencies_ms,
             status_delta=delta["statistics"],
             task_snapshot=post.get("tasks", {}),
@@ -388,19 +380,21 @@ class StressTest(BaseTest):
         requests_sent = 0
         with alive_bar(title=cfg.name) as pbar:
             while time.perf_counter() < deadline:
+                # Always honour the minimum gap: with pacing_s = 0 this loop
+                # would otherwise hammer a non-blocking port with no pause,
+                # unlike every other profile.
+                gap = max(cfg.pacing_s, _MIN_GAP_S)
                 for idx in STATISTICS_ITEMS:
                     self._status_update(STATISTICS_HEADER_BYTES, idx)
                     requests_sent += 1
-                    if cfg.pacing_s > 0:
-                        time.sleep(cfg.pacing_s)
+                    time.sleep(gap)
                     pbar()
                     if time.perf_counter() >= deadline:
                         break
                 for idx in TASK_ITEMS:
                     self._status_update(TASK_HEADER_BYTES, idx)
                     requests_sent += 1
-                    if cfg.pacing_s > 0:
-                        time.sleep(cfg.pacing_s)
+                    time.sleep(gap)
                     pbar()
                     if time.perf_counter() >= deadline:
                         break
@@ -443,19 +437,17 @@ class StressTest(BaseTest):
                 # Re-register message handler after baud change re-creates threads
                 self.ser.set_message_handler(lambda c, d, _: self.handle_message(c, d))
 
-                self.latency_msg_sent.clear()
-                self.latency_msg_received.clear()
+                self._reset_latency()
                 for i in range(cfg.num_messages):
                     self.publish(i, cfg.message_length)
                     time.sleep(max(cfg.pacing_s, 0.02))
                     pbar()
                 time.sleep(0.3)
 
-                total_sent += len(self.latency_msg_sent)
-                total_received += len(self.latency_msg_received)
-                all_latencies_ms.extend(
-                    v * 1e3 for v in self.latency_msg_received.values()
-                )
+                latencies, sent_count, received_count = self._latency_snapshot()
+                total_sent += sent_count
+                total_received += received_count
+                all_latencies_ms.extend(v * 1e3 for v in latencies)
 
         # Restore original baud rate
         if self.ser.baudrate != original_baud:
@@ -484,15 +476,13 @@ class StressTest(BaseTest):
 
         # Inject noise directly via the underlying serial port (bypass COBS framing)
         noise_payload = bytes(random.randint(1, 255) for _ in range(cfg.noise_bytes))  # noqa: S311  # Generating random noise, not cryptography
-        if self.ser.ser and self.ser.ser.is_open:
-            self.ser.ser.write(noise_payload)
-            self.ser.ser.flush()
+        if self.ser.is_open():
+            self.ser.write_raw(noise_payload)
             logger.info("Injected %d noise bytes", cfg.noise_bytes)
 
         # Wait briefly then send valid echo messages and measure recovery
         time.sleep(0.1)
-        self.latency_msg_sent.clear()
-        self.latency_msg_received.clear()
+        self._reset_latency()
         recover_start = time.perf_counter()
 
         with alive_bar(cfg.num_messages, title=cfg.name) as pbar:
@@ -504,20 +494,21 @@ class StressTest(BaseTest):
         # Wait up to max_recovery_time_s for all echos to come back
         deadline = recover_start + cfg.thresholds.max_recovery_time_s
         while time.perf_counter() < deadline:
-            if len(self.latency_msg_received) >= cfg.num_messages:
+            if self._latency_snapshot()[2] >= cfg.num_messages:
                 break
             time.sleep(0.01)
 
         post = self._request_status_snapshot()
         ended_at = datetime.now(UTC).isoformat()
-        latencies_ms = [v * 1e3 for v in self.latency_msg_received.values()]
+        latencies, sent_count, received_count = self._latency_snapshot()
+        latencies_ms = [v * 1e3 for v in latencies]
         delta = self._calculate_status_delta(pre, post)
         return self._make_result(
             cfg,
             started_at=started_at,
             ended_at=ended_at,
-            messages_sent=len(self.latency_msg_sent),
-            messages_received=len(self.latency_msg_received),
+            messages_sent=sent_count,
+            messages_received=received_count,
             latencies_ms=latencies_ms,
             status_delta=delta["statistics"],
             task_snapshot=post.get("tasks", {}),
@@ -528,7 +519,7 @@ class StressTest(BaseTest):
         started_at = datetime.now(UTC).isoformat()
         total_delta: dict[str, int] = {}
 
-        if not (self.ser.ser and self.ser.ser.is_open):
+        if not self.ser.is_open():
             logger.warning("Serial port not available for fault injection")
             ended_at = datetime.now(UTC).isoformat()
             return self._make_result(
@@ -542,11 +533,13 @@ class StressTest(BaseTest):
                 task_snapshot={},
             )
 
+        # This scenario only consumes the statistics delta, so skip the per-task
+        # requests, and carry each frame's "after" snapshot over as the next
+        # frame's "before" instead of polling the device twice per frame.
+        pre = self._request_status_snapshot(include_tasks=False)
         with alive_bar(len(cfg.fault_frames), title=cfg.name) as pbar:
             for idx, frame in enumerate(cfg.fault_frames):
-                pre = self._request_status_snapshot()
-                self.ser.ser.write(frame)
-                self.ser.ser.flush()
+                self.ser.write_raw(frame)
                 logger.info(
                     "Fault frame %d/%d injected: %s",
                     idx + 1,
@@ -554,10 +547,11 @@ class StressTest(BaseTest):
                     frame.hex(),
                 )
                 time.sleep(max(cfg.pacing_s, _MIN_GAP_S))
-                post = self._request_status_snapshot()
+                post = self._request_status_snapshot(include_tasks=False)
                 frame_delta = self._calculate_status_delta(pre, post)["statistics"]
                 for key, val in frame_delta.items():
                     total_delta[key] = total_delta.get(key, 0) + val
+                pre = post
                 pbar()
 
         ended_at = datetime.now(UTC).isoformat()

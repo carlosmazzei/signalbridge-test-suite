@@ -24,6 +24,9 @@ setup_logging()
 
 logger = logging.getLogger(__name__)
 
+# Payload sent by test_echo_command and expected back verbatim from the device.
+ECHO_PAYLOAD = bytes([0x00, 0x34, 0x02, 0x01, 0x02])
+
 
 class RegressionTest:
     """Regression test class."""
@@ -42,15 +45,16 @@ class RegressionTest:
         """Handle message for regression test."""
         if command == SerialCommand.ECHO_COMMAND.value:
             try:
-                if decoded_data == bytes([0x00, 0x34, 0x02, 0x01, 0x02]):
+                # decoded_data is the full frame: payload + trailing XOR
+                # checksum. SerialInterface has already verified that byte, so
+                # compare only the payload against what test_echo_command sent.
+                echoed_payload = decoded_data[: len(ECHO_PAYLOAD)]
+                if echoed_payload == ECHO_PAYLOAD:
                     logger.info("[OK] Echo command")
                 else:
                     logger.info("[FAIL] Echo command")
 
-                logger.info(
-                    "Expected: %s",
-                    bytes([0x00, 0x34, 0x02, 0x01, 0x02]),
-                )
+                logger.info("Expected: %s", ECHO_PAYLOAD)
                 logger.info(
                     "Received: %s, command: %s, decoded: %s",
                     byte_string,
@@ -64,8 +68,7 @@ class RegressionTest:
 
     def test_echo_command(self) -> None:
         """Test echo command."""
-        payload = bytes([0x00, 0x34, 0x02, 0x01, 0x02])
-        self.ser.write(payload)
+        self.ser.write(ECHO_PAYLOAD)
 
     def execute_test(self) -> None:
         """Execute regression test."""
