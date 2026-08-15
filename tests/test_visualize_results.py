@@ -706,6 +706,23 @@ def test_get_test_files(visualize_results: VisualizeResults) -> None:
         assert files == mock_files
 
 
+def test_get_test_files_excludes_runner_summaries(
+    visualize_results: VisualizeResults,
+) -> None:
+    """Test that _get_test_files ignores runner summary JSON files."""
+    mock_files = [
+        Path("20260426-103550-2783840a-latency.json"),
+        Path("20260426-103720-37ec50b4-runner.json"),
+        Path("20260426-104000-12345678-stress.json"),
+    ]
+    with patch("visualize_results.Path.glob", return_value=mock_files):
+        files = visualize_results._get_test_files()
+        assert files == [
+            Path("20260426-103550-2783840a-latency.json"),
+            Path("20260426-104000-12345678-stress.json"),
+        ]
+
+
 def test_get_page_files(visualize_results: VisualizeResults) -> None:
     """Test for the _get_page_files method."""
     files = [Path(f"test_{i}.json") for i in range(15)]
