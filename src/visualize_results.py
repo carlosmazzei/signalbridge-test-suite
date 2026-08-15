@@ -43,6 +43,19 @@ from ui_console import console
 logger = logging.getLogger(__name__)
 
 
+def _show_and_close() -> None:
+    """
+    Display the current figure, then release it.
+
+    ``plt.show()`` returns once the window is dismissed but leaves the figure
+    registered with pyplot. Without an explicit close, every visualization in a
+    session accumulates another figure -- pyplot warns past 20 and the memory is
+    never reclaimed.
+    """
+    plt.show()
+    plt.close("all")
+
+
 class VisualizeResults:
     """Class to visualize the log files and plot it."""
 
@@ -433,7 +446,7 @@ class VisualizeResults:
             plt.tight_layout()  # pragma: no mutate
             plt.subplots_adjust(bottom=0.28)  # pragma: no mutate
 
-            plt.show()
+            _show_and_close()
 
         except Exception:
             logger.exception("Error occurred while plotting.")
@@ -525,7 +538,7 @@ class VisualizeResults:
             # Adjust layout to make room for explanation text
             plt.subplots_adjust(bottom=0.18)  # pragma: no mutate
 
-            plt.show()
+            _show_and_close()
 
         except Exception:
             logger.exception("Error occurred while plotting histograms.")
@@ -619,7 +632,7 @@ class VisualizeResults:
             # Adjust layout to make room for explanation text
             plt.subplots_adjust(bottom=0.20)  # pragma: no mutate
 
-            plt.show()
+            _show_and_close()
 
         except Exception:
             logger.exception("Error occurred while plotting controller health.")
@@ -837,7 +850,7 @@ class VisualizeResults:
             )
 
             plt.subplots_adjust(bottom=0.15, right=0.88)  # pragma: no mutate
-            plt.show()
+            _show_and_close()
 
         except Exception:
             logger.exception("Error occurred while plotting error counter details.")
@@ -1034,7 +1047,7 @@ class VisualizeResults:
 
         plt.tight_layout()  # pragma: no mutate
         plt.subplots_adjust(top=0.90)  # pragma: no mutate
-        plt.show()
+        _show_and_close()
 
     def _stress_fig_latency_boxplot(
         self,
@@ -1072,7 +1085,7 @@ class VisualizeResults:
             ax_box.get_xticklabels(), rotation=30, ha="right", fontsize=8
         )  # pragma: no mutate
         plt.tight_layout()  # pragma: no mutate
-        plt.show()
+        _show_and_close()
 
     def _stress_fig_errors_and_verdicts(
         self,
@@ -1192,7 +1205,7 @@ class VisualizeResults:
 
         plt.tight_layout()  # pragma: no mutate
         plt.subplots_adjust(top=0.90, right=0.82)  # pragma: no mutate
-        plt.show()
+        _show_and_close()
 
     def _visualize_stress_task_snapshots(
         self,
@@ -1306,7 +1319,7 @@ class VisualizeResults:
                     )  # pragma: no mutate
 
         plt.tight_layout()  # pragma: no mutate
-        plt.show()
+        _show_and_close()
 
     def execute_visualization(self) -> None:
         """Execute visualization."""

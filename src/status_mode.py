@@ -29,6 +29,7 @@ from base_test import (
     STATISTICS_DISPLAY_NAMES,
     STATISTICS_HEADER_BYTES,
     STATISTICS_ITEMS,
+    STATUS_REQUEST_SPACING_S,
     TASK_CORE_AFFINITY,
     TASK_DISPLAY_NAMES,
     TASK_HEADER_BYTES,
@@ -159,7 +160,7 @@ class StatusMode:
         self.logger.info("Requesting for status ...")
         for index in self.error_items:
             self._status_update(STATISTICS_HEADER_BYTES, index)
-            time.sleep(0.1)
+            time.sleep(STATUS_REQUEST_SPACING_S)
             self.logger.info(
                 "[%s] status update requested", self.error_items[index].message
             )
@@ -170,7 +171,7 @@ class StatusMode:
         """Send status request for task stats."""
         for index in self.task_items:
             self._status_update(TASK_HEADER_BYTES, index)
-            time.sleep(0.1)
+            time.sleep(STATUS_REQUEST_SPACING_S)
             self.logger.info(
                 "[%s] status update requested", self.task_items[index].name
             )

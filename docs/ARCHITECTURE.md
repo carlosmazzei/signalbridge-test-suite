@@ -145,6 +145,30 @@ dictionaries.
 producers (echo publisher, status pollers, raw fault injection) cannot
 interleave bytes mid-frame.
 
+### Status snapshot cost
+
+`_request_status_snapshot()` paces one request per item, so its floor is set by
+the number of items, not by how fast the device answers. Pass
+`include_tasks=False` when only `status_delta` is consumed — it skips the
+per-task round-trips entirely. Scenarios that snapshot in a loop should carry
+each "after" snapshot over as the next iteration's "before" rather than polling
+twice per step; `_run_fault_injection` is the reference for both.
+
+### Flow control
+
+RTS backpressure is driven by `message_queue.qsize()` against
+`QUEUE_HIGH_WATER` / `QUEUE_LOW_WATER`, i.e. by how far the processing thread
+has fallen behind. Do **not** measure it on `self.buffer`: that is the
+partial-frame accumulator, cleared at every delimiter, so an ordinary ~12-byte
+frame never approaches a byte watermark and flow control would never engage.
+
+### Logging setup
+
+`setup_logging()` configures the process once and ignores later calls. Eight
+modules invoke it at import time, and each real run re-reads the ini file,
+re-opens the handlers, and restarts the `QueueListener` thread. Pass
+`force=True` only for a deliberate reconfiguration.
+
 ---
 
 ## 5. Threading Model

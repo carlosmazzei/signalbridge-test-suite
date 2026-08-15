@@ -124,6 +124,10 @@ class SerialInterface:
     # Upper bound on undelivered frames.  Keeps a stalled or dead consumer from
     # growing the queue without limit while the device floods the port.
     MAX_QUEUE_SIZE = 10000
+    # RTS watermarks, as a fraction of MAX_QUEUE_SIZE.  Hysteresis between the
+    # two keeps the line from flapping around a single threshold.
+    QUEUE_HIGH_WATER = int(MAX_QUEUE_SIZE * 0.75)
+    QUEUE_LOW_WATER = int(MAX_QUEUE_SIZE * 0.25)
     # Longest a shutdown will wait on a worker thread before giving up, so a
     # wedged read thread cannot hang a headless run forever.
     JOIN_TIMEOUT_S = 5.0
@@ -134,19 +138,20 @@ class SerialInterface:
         baudrate: int,
         timeout: float,
         *,
-        verify_checksum: bool = False,
+        verify_checksum: bool = True,
     ) -> None:
         """
         Initialize the serial interface.
 
         ``verify_checksum`` makes :meth:`_process_complete_message` drop frames
-        whose trailing XOR byte does not match the payload.  It defaults to
-        ``False`` because it is not settled whether the firmware appends a
-        checksum to its *replies*: ``command_mode`` logs a received-vs-computed
-        pair as if it does, while ``regression_test`` compares the decoded echo
-        against the bare payload as if it does not.  Mismatches are counted in
-        ``statistics.checksum_mismatches`` regardless, so a run against real
-        hardware settles the question before the drop is switched on.
+        whose trailing XOR byte does not match the payload, so a corrupted frame
+        that survives COBS decoding is no longer counted as a valid reply.  The
+        wire format is symmetric — ``COBS_ENCODE(body + XOR_checksum) + 0x00`` in
+        both directions — so replies carry the checksum the same way commands do.
+
+        Pass ``verify_checksum=False`` to fall back to counting mismatches in
+        ``statistics.checksum_mismatches`` without dropping anything, which is
+        useful when bringing up firmware whose reply framing is still in flux.
         """
         self.port = port
         self.baudrate = baudrate
@@ -341,6 +346,24 @@ class SerialInterface:
             return False
         return calculate_checksum(decoded_data[:-1]) == decoded_data[-1:]
 
+    def _update_flow_control(self) -> None:
+        """
+        Assert or release RTS based on how far behind the consumer is.
+
+        Backpressure has to be measured on the queue of undelivered frames, not
+        on ``self.buffer``: that buffer only holds the frame currently being
+        assembled and is cleared at every delimiter, so for normal ~12-byte
+        frames it never approaches the watermark and RTS never engages. Queue
+        depth is what actually grows when the processing thread falls behind.
+        """
+        if not self.ser:
+            return
+        pending = self.message_queue.qsize()
+        if pending > self.QUEUE_HIGH_WATER:
+            self.ser.rts = False  # Stop sender
+        elif pending < self.QUEUE_LOW_WATER:
+            self.ser.rts = True  # Allow sender to send
+
     def _enqueue_message(self, frame: bytes) -> None:
         """Queue a complete frame, dropping it if the consumer is saturated."""
         try:
@@ -357,13 +380,7 @@ class SerialInterface:
     def _handle_received_data(self, data: bytes, max_message_size: int) -> None:
         """Handle received data and put complete messages in the queue."""
         self.statistics.record_received_bytes(len(data))
-
-        # Update RTS based on buffer size
-        if self.ser:
-            if len(self.buffer) > self.BUFFER_HIGH_WATER:
-                self.ser.rts = False  # Stop sender
-            elif len(self.buffer) < self.BUFFER_LOW_WATER:
-                self.ser.rts = True  # Allow sender to send
+        self._update_flow_control()
 
         for byte in data:
             if byte == 0:  # COBS packet delimiter

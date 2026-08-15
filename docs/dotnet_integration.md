@@ -226,19 +226,63 @@ guarantee.
   this as a prerequisite if regression-mode automation is required.
 - **Exit code carries no verdict information** (§4) — always parse the
   summary/result JSON.
-- **Received frames are not checksum-verified by default.** `SerialInterface`
-  takes a `verify_checksum` flag that drops frames whose trailing XOR byte
-  does not match; it defaults to `False` because the firmware's reply format
-  is not settled in this repo — `command_mode.py` logs a received-vs-computed
-  checksum pair as though replies carry one, while `regression_test.py`
-  compares the decoded echo against the bare payload as though they do not.
-  Until that is confirmed against hardware, a corrupted frame that survives
-  COBS decoding is still counted as a valid echo. The `checksum_mismatches`
-  heartbeat counter (§6) reports how often this happens: a rate near zero
-  means replies are checksummed and the flag can be switched on; a rate near
-  100% means they are not, and the check should stay off.
+- **Frames dropped by checksum verification are invisible to the mode's own
+  counters.** Verification is on (see §10), so a corrupted reply is discarded
+  before it reaches the test mode. It therefore shows up as a *dropped* echo
+  in `drop_ratio`, not as an error — the only direct signal is the
+  `checksum_mismatches` heartbeat counter (§6). When diagnosing an unexpected
+  `drop_ratio`, read that counter before assuming the device failed to reply.
 
-## 9. Keeping this document in sync
+## 9. `--stress-config` file format
+
+The JSON passed to `--stress-config` maps onto `stress_config.StressConfig`.
+Two fields need care:
+
+- **`output_dir`** defaults to `test_results`, matching the built-in config.
+  The runner discovers `result_file` by diffing `test_results/` before and
+  after the run, so pointing this elsewhere makes `result_file` come back
+  `null` even though the report was written.
+- **`fault_frames`** is a list of **recipe names**, not raw bytes — byte
+  sequences cannot round-trip through JSON. Names are resolved against
+  `fault_frames.ALL_RECIPES`: `empty_frame`, `too_short`, `size_mismatch`,
+  `unknown_id`, `bad_checksum`, `payload_overflow`, `single_overflow`,
+  `double_overflow_empty`. An unknown name fails the load with a `ValueError`
+  naming the valid recipes, rather than silently yielding a scenario that
+  injects nothing and then always reports `FAIL` against its
+  `expected_counter_deltas`.
+
+```json
+{
+  "output_dir": "test_results",
+  "scenarios": [
+    {
+      "name": "fi_bad_checksum",
+      "command_profile": "fault_injection",
+      "pacing_s": 0.05,
+      "fault_frames": ["bad_checksum"],
+      "thresholds": {
+        "max_echo_drop_ratio": 1.0,
+        "expected_counter_deltas": {"checksum_error": 1}
+      }
+    }
+  ]
+}
+```
+
+## 10. Receive-path checksum verification
+
+`SerialInterface` verifies the trailing XOR checksum on every decoded frame
+and drops mismatches; the wire format is symmetric
+(`COBS_ENCODE(body + XOR_checksum) + 0x00`) in both directions. Every
+mismatch increments `checksum_mismatches`, reported on each heartbeat (§6).
+
+A dropped frame is never dispatched to the test mode and never counted in
+`commands_received`, so corrupted traffic can no longer inflate latency
+samples or mask a real drop. Construct `SerialInterface(...,
+verify_checksum=False)` to fall back to counting mismatches without dropping —
+useful when bringing up firmware whose reply framing is still changing.
+
+## 11. Keeping this document in sync
 
 This file is a **contract**, not incidental documentation. Whenever a change
 touches the headless surface — `src/runner_cli.py` (CLI flags, stdout

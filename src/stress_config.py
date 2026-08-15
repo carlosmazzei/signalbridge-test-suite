@@ -280,9 +280,40 @@ def _scenario_thresholds_from_dict(d: dict[str, Any]) -> ScenarioThresholds:
     )
 
 
+def _fault_frames_from_names(names: Any, scenario_name: str) -> list[bytes]:
+    """
+    Resolve fault-frame recipe names to their raw byte sequences.
+
+    Raw bytes cannot round-trip through JSON, so a config names the recipes it
+    wants (``"fault_frames": ["bad_checksum", "too_short"]``) and they are
+    looked up in :data:`fault_frames.ALL_RECIPES`.
+    """
+    if not names:
+        return []
+    if not isinstance(names, list):
+        msg = (
+            f"Scenario '{scenario_name}': fault_frames must be a list of recipe "
+            f"names, got {type(names).__name__}"
+        )
+        raise TypeError(msg)
+
+    frames: list[bytes] = []
+    for name in names:
+        if name not in _ff.ALL_RECIPES:
+            known = ", ".join(sorted(_ff.ALL_RECIPES))
+            msg = (
+                f"Scenario '{scenario_name}': unknown fault frame '{name}'. "
+                f"Known recipes: {known}"
+            )
+            raise ValueError(msg)
+        frames.append(_ff.ALL_RECIPES[name])
+    return frames
+
+
 def _scenario_from_dict(d: dict[str, Any]) -> ScenarioConfig:
+    name = d["name"]
     return ScenarioConfig(
-        name=d["name"],
+        name=name,
         duration_s=float(d.get("duration_s", 30.0)),
         command_profile=d.get("command_profile", "echo_only"),
         pacing_s=float(d.get("pacing_s", 0.0)),
@@ -290,7 +321,7 @@ def _scenario_from_dict(d: dict[str, Any]) -> ScenarioConfig:
         num_messages=int(d.get("num_messages", 500)),
         baud_rates=d.get("baud_rates", []),
         noise_bytes=int(d.get("noise_bytes", 64)),
-        fault_frames=[],  # bytes not round-trippable via JSON; set programmatically
+        fault_frames=_fault_frames_from_names(d.get("fault_frames"), name),
         thresholds=_scenario_thresholds_from_dict(d.get("thresholds", {})),
         tags=d.get("tags", []),
     )
@@ -301,6 +332,9 @@ def load_stress_config(path: str | Path) -> StressConfig:
     with Path(path).open(encoding="utf-8") as f:
         data = json.load(f)
     return StressConfig(
-        output_dir=data.get("output_dir", "results"),
+        # Default must match default_stress_config(): the runner only scans
+        # TEST_RESULTS_FOLDER for new artifacts, so a different directory here
+        # makes the reported result_file come back null.
+        output_dir=data.get("output_dir", TEST_RESULTS_FOLDER),
         scenarios=[_scenario_from_dict(s) for s in data.get("scenarios", [])],
     )
