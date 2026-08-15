@@ -43,6 +43,27 @@ from result_format import FORMAT_LATENCY_SERIES
 from serial_interface import SerialCommand, SerialInterface
 
 
+class DummyBar:
+    """
+    Stand-in for ``alive_bar`` in tests that drive a full test loop.
+
+    The real progress bar resolves ``sys.stdout.fileno()`` on entry, which
+    raises ``ValueError: I/O operation on closed file`` under runners that
+    close stdout (notably ``mutmut``'s clean-test pass). Any test that calls
+    ``main_test`` must patch ``latency_test.alive_bar`` with this.
+    """
+
+    def __init__(self, *_: Any, **__: Any) -> None:
+        """Accept and ignore whatever alive_bar was called with."""
+
+    def __enter__(self) -> Any:
+        """Return a no-op progress callback."""
+        return lambda: None
+
+    def __exit__(self, *_: object) -> None:
+        """Nothing to tear down."""
+
+
 @pytest.fixture
 def latency_tester() -> LatencyTest:
     """LatencyTest with a mocked SerialInterface."""
@@ -316,15 +337,6 @@ def test_main_test_collects_and_writes_output() -> None:
     mock_ser.baudrate = 115200
     tester = LatencyTest(mock_ser)
 
-    # Replace progress bar with a no-op context manager
-    class DummyBar:
-        def __init__(self, *_: Any, **__: Any) -> None: ...
-        def __enter__(self) -> Any:
-            return lambda: None
-
-        def __exit__(self, *_: object) -> None:
-            return None
-
     # Use a monotonic counter for perf_counter to avoid zero elapsed time
     t = {"v": 0.0}
 
@@ -391,14 +403,6 @@ def test_main_test_with_jitter_path() -> None:
     mock_ser = Mock(spec=SerialInterface)
     mock_ser.baudrate = 115200
     tester = LatencyTest(mock_ser)
-
-    class DummyBar:
-        def __init__(self, *_: Any, **__: Any) -> None: ...
-        def __enter__(self) -> Any:
-            return lambda: None
-
-        def __exit__(self, *_: object) -> None:
-            return None
 
     t = {"v": 0.0}
 
@@ -543,14 +547,6 @@ def test_main_test_nonzero_wait_values() -> None:
     mock_ser.baudrate = 115200
     tester = LatencyTest(mock_ser)
 
-    class DummyBar:
-        def __init__(self, *_: Any, **__: Any) -> None: ...
-        def __enter__(self) -> Any:
-            return lambda: None
-
-        def __exit__(self, *_: object) -> None:
-            return None
-
     t = {"v": 0.0}
 
     def fake_perf_counter() -> float:
@@ -600,6 +596,7 @@ class TestRunSizeValidation:
         tester = latency_tester
         tester.ser.baudrate = 115200
         with (
+            patch("latency_test.alive_bar", DummyBar),
             patch.object(tester, "_request_status_snapshot", return_value={}),
             patch.object(tester, "_calculate_status_delta", return_value={}),
             patch.object(tester, "_write_output_to_file"),

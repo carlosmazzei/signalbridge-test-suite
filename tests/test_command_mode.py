@@ -485,9 +485,14 @@ class TestDisplayThreadResilience:
             mode.handle_message(1, b"", b"")  # raises inside the loop
             mode.handle_message(2, b"", b"")
             mode.handle_message(3, b"", b"")
-            thread = threading.Thread(target=mode._process_messages)
+            # daemon=True so a mutant that breaks the loop's exit condition
+            # cannot leave a live thread holding the interpreter open.
+            thread = threading.Thread(target=mode._process_messages, daemon=True)
             thread.start()
-            thread.join(timeout=5)
+            try:
+                thread.join(timeout=5)
+            finally:
+                mode.running = False
 
         assert not thread.is_alive()
         # Frames after the exception were still processed.
