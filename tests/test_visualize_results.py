@@ -442,7 +442,10 @@ def test_plot_error_counter_details(visualize_results: VisualizeResults) -> None
         visualize_results.plot_error_counter_details(labels, error_counters)
 
         # --- Verify Figure ---
-        mock_figure.assert_called_with(figsize=(14, 10))
+        # assert_any_call, not assert_called_with: pyplot's gcf() lazily calls
+        # figure() again from tight_layout/subplots_adjust, so the figsize call
+        # is not necessarily the last one.
+        mock_figure.assert_any_call(figsize=(14, 10))
         mock_fig.suptitle.assert_called_with(
             "Detailed Error Counter Analysis - Before/After Test Series",
             fontsize=14,

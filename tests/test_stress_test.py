@@ -637,13 +637,24 @@ class TestFaultInjection:
             tester._run_fault_injection(tester.config.scenarios[0])
         assert mock_serial.write_raw.call_count == 2
 
-    def test_status_snapshot_pre_and_post_per_frame(self, mock_serial: Mock) -> None:
+    def test_snapshot_reused_as_next_frames_baseline(self, mock_serial: Mock) -> None:
+        """Each frame's 'after' is the next frame's 'before': N+1, not 2N."""
         frames = [b"\x01\x00", b"\x01\x00", b"\x01\x00"]
         tester = self._make_fi_tester(mock_serial, frames)
         with patch("stress_test.time.sleep"):
             tester._run_fault_injection(tester.config.scenarios[0])
-        # pre + post for each of the 3 frames = 6 calls
-        assert tester._request_status_snapshot.call_count == 6
+        # 1 initial baseline + 1 post per frame = 4, down from 6.
+        assert tester._request_status_snapshot.call_count == len(frames) + 1
+
+    def test_snapshots_skip_task_requests(self, mock_serial: Mock) -> None:
+        """Only the statistics delta is consumed, so task polling is skipped."""
+        frames = [b"\x01\x00", b"\x01\x00"]
+        tester = self._make_fi_tester(mock_serial, frames)
+        with patch("stress_test.time.sleep"):
+            tester._run_fault_injection(tester.config.scenarios[0])
+        assert tester._request_status_snapshot.call_args_list
+        for call in tester._request_status_snapshot.call_args_list:
+            assert call.kwargs.get("include_tasks") is False
 
     def test_total_delta_accumulates_across_frames(self, mock_serial: Mock) -> None:
         frames = [b"\x01\x00", b"\x01\x00", b"\x01\x00"]

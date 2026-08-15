@@ -21,7 +21,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from regression_test import RegressionTest
+from checksum import calculate_checksum
+from regression_test import ECHO_PAYLOAD, RegressionTest
 from serial_interface import SerialCommand, SerialInterface
 
 
@@ -283,3 +284,44 @@ class TestExecuteTestCallsEcho:
         ) as spy:
             regression_test.execute_test()
         spy.assert_called_once()
+
+
+class TestEchoReplyCarriesChecksum:
+    """The device echoes payload + trailing XOR checksum, not the bare payload."""
+
+    def _capture(self, tester: RegressionTest, decoded: bytes) -> list[str]:
+        logged: list[str] = []
+        with patch("regression_test.logger") as mock_log:
+            mock_log.info.side_effect = lambda msg, *args: logged.append(
+                msg % args if args else msg
+            )
+            tester.handle_message(SerialCommand.ECHO_COMMAND.value, decoded, b"raw")
+        return logged
+
+    def test_reply_with_checksum_byte_reports_ok(
+        self, regression_test: RegressionTest
+    ) -> None:
+        """A full frame (payload + checksum) is the real shape off the wire."""
+        reply = ECHO_PAYLOAD + calculate_checksum(ECHO_PAYLOAD)
+        assert len(reply) == len(ECHO_PAYLOAD) + 1
+
+        logged = self._capture(regression_test, reply)
+
+        assert any("[OK] Echo command" in m for m in logged)
+        assert not any("[FAIL]" in m for m in logged)
+
+    def test_corrupted_payload_still_reports_fail(
+        self, regression_test: RegressionTest
+    ) -> None:
+        """Stripping the checksum must not make every reply look correct."""
+        wrong = bytes([0x00, 0x34, 0x02, 0x01, 0xFF])
+        logged = self._capture(regression_test, wrong + calculate_checksum(wrong))
+
+        assert any("[FAIL] Echo command" in m for m in logged)
+
+    def test_echo_command_sends_the_expected_payload(
+        self, regression_test: RegressionTest, mock_serial: Mock
+    ) -> None:
+        """The payload compared against is the one actually transmitted."""
+        regression_test.test_echo_command()
+        mock_serial.write.assert_called_once_with(ECHO_PAYLOAD)

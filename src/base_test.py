@@ -368,10 +368,51 @@ class BaseTest:
         payload = header + bytes([0x01]) + index.to_bytes(1, byteorder="big")
         self.ser.write(payload)
 
+    def _send_status_requests(self, *, include_tasks: bool) -> None:
+        """
+        Send one request per status item, paced to avoid flooding the device.
+
+        The gap is only needed *between* requests, so the last one in the batch
+        is not followed by a sleep.
+        """
+        requests: list[tuple[bytes, int]] = [
+            (STATISTICS_HEADER_BYTES, index) for index in STATISTICS_ITEMS
+        ]
+        if include_tasks:
+            requests += [(TASK_HEADER_BYTES, index) for index in TASK_ITEMS]
+
+        last = len(requests) - 1
+        for position, (header, index) in enumerate(requests):
+            self._status_update(header, index)
+            if position != last:
+                time.sleep(STATUS_REQUEST_SPACING_S)
+
+    def _count_fresh(self, *, marker: float, include_tasks: bool) -> tuple[int, int]:
+        """Return how many statistics/task slots were updated after ``marker``."""
+        with self._status_lock:
+            stats_received = sum(
+                1
+                for idx in STATISTICS_ITEMS
+                if self._statistics_updated_at[idx] >= marker
+            )
+            tasks_received = (
+                sum(1 for idx in TASK_ITEMS if self._task_updated_at[idx] >= marker)
+                if include_tasks
+                else 0
+            )
+        return stats_received, tasks_received
+
     def _request_status_snapshot(
-        self, timeout_s: float = STATUS_REQUEST_TIMEOUT_S
+        self, timeout_s: float = STATUS_REQUEST_TIMEOUT_S, *, include_tasks: bool = True
     ) -> dict[str, Any]:
-        """Request device status snapshot and wait for responses."""
+        """
+        Request device status snapshot and wait for responses.
+
+        ``include_tasks=False`` polls only the statistics counters, skipping the
+        per-task requests. Callers that consume just ``status_delta`` (such as
+        the fault-injection scenario) save the pacing cost of those extra
+        round-trips on every snapshot.
+        """
         if self.ser is None:
             return {
                 "statistics": {},
@@ -381,28 +422,17 @@ class BaseTest:
             }
 
         snapshot_marker = time.perf_counter()
-        for index in STATISTICS_ITEMS:
-            self._status_update(STATISTICS_HEADER_BYTES, index)
-            time.sleep(STATUS_REQUEST_SPACING_S)
-        for index in TASK_ITEMS:
-            self._status_update(TASK_HEADER_BYTES, index)
-            time.sleep(STATUS_REQUEST_SPACING_S)
+        self._send_status_requests(include_tasks=include_tasks)
 
+        expected_tasks = len(TASK_ITEMS) if include_tasks else 0
         deadline = time.perf_counter() + timeout_s
         while time.perf_counter() < deadline:
-            with self._status_lock:
-                stats_received = sum(
-                    1
-                    for idx in STATISTICS_ITEMS
-                    if self._statistics_updated_at[idx] >= snapshot_marker
-                )
-                tasks_received = sum(
-                    1
-                    for idx in TASK_ITEMS
-                    if self._task_updated_at[idx] >= snapshot_marker
-                )
-            if stats_received == len(STATISTICS_ITEMS) and tasks_received == len(
-                TASK_ITEMS
+            stats_received, tasks_received = self._count_fresh(
+                marker=snapshot_marker, include_tasks=include_tasks
+            )
+            if (
+                stats_received == len(STATISTICS_ITEMS)
+                and tasks_received == expected_tasks
             ):
                 break
             time.sleep(0.01)
@@ -412,16 +442,15 @@ class BaseTest:
                 name: self._statistics_values[idx]
                 for idx, name in STATISTICS_ITEMS.items()
             }
-            tasks = {name: self._task_values[idx] for idx, name in TASK_ITEMS.items()}
+            tasks = (
+                {name: self._task_values[idx] for idx, name in TASK_ITEMS.items()}
+                if include_tasks
+                else {}
+            )
             min_free_heap_bytes = self._min_free_heap_bytes
-            stats_received = sum(
-                1
-                for idx in STATISTICS_ITEMS
-                if self._statistics_updated_at[idx] >= snapshot_marker
-            )
-            tasks_received = sum(
-                1 for idx in TASK_ITEMS if self._task_updated_at[idx] >= snapshot_marker
-            )
+        stats_received, tasks_received = self._count_fresh(
+            marker=snapshot_marker, include_tasks=include_tasks
+        )
         return {
             "statistics": statistics,
             "tasks": tasks,
@@ -429,7 +458,7 @@ class BaseTest:
             "received": {"statistics": stats_received, "tasks": tasks_received},
             "complete": (
                 stats_received == len(STATISTICS_ITEMS)
-                and tasks_received == len(TASK_ITEMS)
+                and tasks_received == expected_tasks
             ),
         }
 

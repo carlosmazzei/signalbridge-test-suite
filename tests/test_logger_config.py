@@ -22,7 +22,11 @@ import logging.handlers
 import os
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import patch
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 import pytest
 
@@ -30,6 +34,39 @@ from logger_config import _Dispatch, _install_queue_dispatch, setup_logging
 
 
 class TestSetupLogging:
+    @pytest.fixture(autouse=True)
+    def _fresh_process(self) -> Iterator[None]:
+        """setup_logging configures once per process; start each test unset."""
+        previous = _Dispatch.configured
+        _Dispatch.configured = False
+        try:
+            yield
+        finally:
+            _Dispatch.configured = previous
+
+    def test_repeat_calls_are_ignored(self) -> None:
+        """Eight modules call this at import; only the first may reconfigure."""
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch("logging.config.fileConfig") as mock_file_config,
+        ):
+            setup_logging()
+            setup_logging()
+            setup_logging()
+
+        mock_file_config.assert_called_once()
+
+    def test_force_reconfigures(self) -> None:
+        """An explicit force=True still re-reads the configuration."""
+        with (
+            patch.object(Path, "exists", return_value=True),
+            patch("logging.config.fileConfig") as mock_file_config,
+        ):
+            setup_logging()
+            setup_logging(force=True)
+
+        assert mock_file_config.call_count == 2
+
     def test_loads_config_when_file_exists(self) -> None:
         with (
             patch.object(Path, "exists", return_value=True),

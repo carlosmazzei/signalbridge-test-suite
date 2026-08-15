@@ -533,9 +533,12 @@ class StressTest(BaseTest):
                 task_snapshot={},
             )
 
+        # This scenario only consumes the statistics delta, so skip the per-task
+        # requests, and carry each frame's "after" snapshot over as the next
+        # frame's "before" instead of polling the device twice per frame.
+        pre = self._request_status_snapshot(include_tasks=False)
         with alive_bar(len(cfg.fault_frames), title=cfg.name) as pbar:
             for idx, frame in enumerate(cfg.fault_frames):
-                pre = self._request_status_snapshot()
                 self.ser.write_raw(frame)
                 logger.info(
                     "Fault frame %d/%d injected: %s",
@@ -544,10 +547,11 @@ class StressTest(BaseTest):
                     frame.hex(),
                 )
                 time.sleep(max(cfg.pacing_s, _MIN_GAP_S))
-                post = self._request_status_snapshot()
+                post = self._request_status_snapshot(include_tasks=False)
                 frame_delta = self._calculate_status_delta(pre, post)["statistics"]
                 for key, val in frame_delta.items():
                     total_delta[key] = total_delta.get(key, 0) + val
+                pre = post
                 pbar()
 
         ended_at = datetime.now(UTC).isoformat()

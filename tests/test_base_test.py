@@ -31,6 +31,7 @@ from base_test import (
     HEADER_BYTES,
     STATISTICS_HEADER_BYTES,
     STATISTICS_ITEMS,
+    STATUS_REQUEST_SPACING_S,
     TASK_HEADER_BYTES,
     TASK_ITEMS,
     BaseTest,
@@ -996,3 +997,52 @@ class TestLatencyThreadSafety:
         base._reset_latency()
 
         assert base._latency_snapshot() == ([], 0, 0)
+
+
+class TestStatusSnapshotCost:
+    """Pacing dominates snapshot cost, so the request count matters."""
+
+    @staticmethod
+    def _tester() -> BaseTest:
+        base = BaseTest(Mock(spec=SerialInterface))
+        # Mark every slot as fresh so the collection loop exits immediately.
+        for idx in STATISTICS_ITEMS:
+            base._statistics_updated_at[idx] = float("inf")
+        for idx in TASK_ITEMS:
+            base._task_updated_at[idx] = float("inf")
+        return base
+
+    def test_full_snapshot_requests_every_item(self) -> None:
+        """The default still polls all statistics and task slots."""
+        base = self._tester()
+        with patch.object(base, "_status_update") as upd, patch("base_test.time.sleep"):
+            result = base._request_status_snapshot()
+        assert upd.call_count == len(STATISTICS_ITEMS) + len(TASK_ITEMS)
+        assert result["complete"] is True
+        assert set(result["tasks"]) == set(TASK_ITEMS.values())
+
+    def test_stats_only_snapshot_skips_task_requests(self) -> None:
+        """include_tasks=False drops the per-task round-trips entirely."""
+        base = self._tester()
+        with patch.object(base, "_status_update") as upd, patch("base_test.time.sleep"):
+            result = base._request_status_snapshot(include_tasks=False)
+        assert upd.call_count == len(STATISTICS_ITEMS)
+        assert result["tasks"] == {}
+        # Completeness must not be judged against tasks that were never asked for.
+        assert result["complete"] is True
+        assert result["received"]["tasks"] == 0
+
+    def test_no_trailing_sleep_after_last_request(self) -> None:
+        """The gap is only needed between requests, not after the final one."""
+        base = self._tester()
+        with (
+            patch.object(base, "_status_update"),
+            patch("base_test.time.sleep") as sleep_mock,
+        ):
+            base._request_status_snapshot(include_tasks=False)
+        pacing_sleeps = [
+            c
+            for c in sleep_mock.call_args_list
+            if c.args == (STATUS_REQUEST_SPACING_S,)
+        ]
+        assert len(pacing_sleeps) == len(STATISTICS_ITEMS) - 1
