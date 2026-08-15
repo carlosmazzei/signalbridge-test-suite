@@ -2,6 +2,7 @@
 .vscode
 .DS_Store
 .claude
+.cognition/
 .mutmut-cache*
 
 # Remove test results folder

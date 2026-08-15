@@ -96,9 +96,13 @@ class VisualizeResults:
             current_page = result
 
     def _get_test_files(self) -> list[Path]:
-        """Get sorted list of test files from the tests folder."""
+        """Get sorted list of test files, excluding runner summaries."""
         tests_folder: Path = Path(__file__).parent.parent / TEST_RESULTS_FOLDER
-        return sorted(tests_folder.glob("*.json"))
+        return sorted(
+            p
+            for p in tests_folder.glob("*.json")
+            if not p.name.endswith("-runner.json")
+        )
 
     def _get_page_files(
         self, files: list[Path], current_page: int, page_size: int
@@ -1072,7 +1076,7 @@ class VisualizeResults:
             fontweight="bold",
         )  # pragma: no mutate
         bp = ax_box.boxplot(
-            lat_data, showmeans=True, patch_artist=True, labels=lat_names
+            lat_data, showmeans=True, patch_artist=True, tick_labels=lat_names
         )
         for patch in bp["boxes"]:
             patch.set_facecolor("lightyellow")  # pragma: no mutate
