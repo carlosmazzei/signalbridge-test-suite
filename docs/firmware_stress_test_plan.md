@@ -106,7 +106,7 @@ To truly "stress test" firmware robustness, the suite should systematically forc
    - COBS packet missing delimiter,
    - delimiter-only spam,
    - max-size and over-max packets.
-2. For each class, assert expected firmware counters increase (`checksum_error`, `msg_malformed_error`, `cobs_decode_error`, `buffer_overflow_error`, `unknown_cmd_error`) while valid traffic remains serviceable.
+2. For each class, assert expected firmware counters increase (`checksum_error`, `msg_malformed_error`, `cobs_decode_error`, `receive_buffer_overflow_error`, `unknown_cmd_error`) while valid traffic remains serviceable.
 3. Add **recovery assertions**: after fault bursts, a standard echo SLA must be restored within N seconds.
 
 ## Phase 3 — Endurance and longevity
