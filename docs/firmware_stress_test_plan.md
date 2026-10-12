@@ -37,7 +37,7 @@ To truly "stress test" firmware robustness, the suite should systematically forc
 
 1. **Good protocol baseline checks**: property-based tests already validate checksum invariants and COBS framing reconstruction.
 2. **Useful runtime metrics**: latency and baud tests already capture dropped-message counts, outstanding backlog, and firmware status snapshots before/after bursts.
-3. **Threaded serial implementation with backpressure hooks**: `SerialInterface` tracks byte/command statistics and uses RTS watermark controls.
+3. **Threaded serial implementation with bounded receive queue**: USB bulk transfers provide transport backpressure. DTR and RTS stay asserted for the whole USB session because firmware treats either line-state change as a new session. If the bounded frame queue fills, incoming frames are dropped and counted.
 4. **Pluggable architecture**: test modes are modular and routed through `ApplicationManager`, which is a good foundation for adding dedicated stress modes.
 
 ---

@@ -129,7 +129,7 @@ Common port names:
 | Visualize results    | Boxplot, histogram, controller health, and error counter charts |
 | Keypad & ADC monitor | Real-time sparkline display of ADC channels and keypad events   |
 
-**Protocol stack:** COBS framing · XOR checksum · hardware RTS/CTS flow control · multi-threaded read/write
+**Protocol stack:** COBS framing · XOR checksum · USB bulk backpressure + bounded queue drop counter · DTR/RTS asserted for the session · multi-threaded read/write
 
 ## 🎯 Usage Guide
 
@@ -233,7 +233,7 @@ Polls and displays FreeRTOS statistics and task performance in Rich tables.
 | 3   | Refresh display                  |
 | 4   | Exit                             |
 
-**Statistics monitored** (22 counters, full list in `src/base_test.py::STATISTICS_ITEMS`): queue send/receive errors, CDC queue send error, display/LED output errors, watchdog error, malformed-message and COBS-decode errors, receive/buffer overflow errors, checksum error, unknown-command error, bytes sent/received, resource-allocation error, output controller/init/driver/param errors, input queue init/full and input init errors.
+**Statistics monitored** (23 counters, full list in `src/base_test.py::STATISTICS_ITEMS`): queue send/receive errors, CDC queue send error, display/LED output errors, watchdog error, malformed-message and COBS-decode errors, receive/buffer overflow errors, checksum error, unknown-command error, bytes sent/received, resource-allocation error, output controller/init/driver/param errors, input queue init/full and input init errors, and input hysteresis suppressed samples (diagnostic, not an error).
 
 **Tasks monitored:** `cdc_task`, `cdc_write_task`, `uart_event_task`, `led_status_task`, `decode_reception_task`, `process_outbound_task`, `adc_read_task`, `keypad_task` (includes rotary encoder), `idle_task` (system/heap info).
 

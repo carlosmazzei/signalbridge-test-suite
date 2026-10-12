@@ -25,9 +25,15 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from base_test import STATISTICS_HEADER_BYTES
+from base_test import (
+    STATISTICS_DISPLAY_NAMES,
+    STATISTICS_HEADER_BYTES,
+    STATISTICS_ITEMS,
+    STATUS_ERROR_KEYS,
+)
 from serial_interface import SerialCommand, SerialInterface
 from status_mode import (
+    _ERROR_STAT_NAMES,
     _TASK_INDEX_BY_NAME,
     StatusMode,
 )
@@ -78,6 +84,16 @@ def test_handle_message_updates_statistics(caplog: pytest.LogCaptureFixture) -> 
     assert item.value == value
     assert item.last_updated != 0
     assert f"{item.message} value updated to {value}" in caplog.text
+
+
+def test_input_hysteresis_suppressed_is_not_an_error_counter() -> None:
+    """The diagnostic counter is displayed but not classified as an error."""
+    stat_name = STATISTICS_ITEMS[22]
+
+    assert stat_name == "input_hysteresis_suppressed"
+    assert STATISTICS_DISPLAY_NAMES[stat_name] == "Input Hysteresis Suppressed"
+    assert stat_name not in STATUS_ERROR_KEYS
+    assert stat_name not in _ERROR_STAT_NAMES
 
 
 def test_handle_message_updates_task_fields(caplog: pytest.LogCaptureFixture) -> None:

@@ -116,7 +116,7 @@ Every test mode that communicates with the device **must** extend `BaseTest` (`s
 | `handle_message(command, decoded_data)` | Dispatch on command ID: ECHO → latency, STATISTICS → `_statistics_values`, TASK_STATUS → `_task_values` |
 | `_calculate_test_results(...)` | Aggregate latency stats (avg/min/max/P95 via numpy) |
 | `_write_output_to_file(path, data)` | Serialize results list to JSON |
-| `_request_status_snapshot(timeout_s)` | Poll all 22 statistics + 10 task items; return `{statistics, tasks, received, complete}` |
+| `_request_status_snapshot(timeout_s)` | Poll all 23 statistics + 9 task items; return `{statistics, tasks, received, complete}` |
 | `_calculate_status_delta(before, after)` | Compute counter deltas between two snapshots |
 | `_get_user_input(prompt, default_value)` | Prompt with default, auto-cast to `type(default_value)`; `bool` defaults are parsed by word and an unconvertible entry falls back to the default |
 | `_status_lock` | `threading.Lock` — always acquire before reading/writing `_statistics_values` or `_task_values` |
@@ -156,11 +156,15 @@ twice per step; `_run_fault_injection` is the reference for both.
 
 ### Flow control
 
-RTS backpressure is driven by `message_queue.qsize()` against
-`QUEUE_HIGH_WATER` / `QUEUE_LOW_WATER`, i.e. by how far the processing thread
-has fallen behind. Do **not** measure it on `self.buffer`: that is the
-partial-frame accumulator, cleared at every delimiter, so an ordinary ~12-byte
-frame never approaches a byte watermark and flow control would never engage.
+The host does not use RTS for backpressure. `SerialInterface.open()` disables
+OS-managed RTS/CTS and asserts both DTR and RTS; firmware requires both lines
+asserted and treats a change to either as a new USB session. Do not toggle these
+lines during a session: a transition clears RX, drops queued inbound frames,
+discards the partial TX packet, and republishes key/ADC snapshots.
+
+USB bulk transfers provide transport-level backpressure. The host also uses a
+bounded frame queue; if its consumer falls behind until the queue is full,
+incoming frames are dropped and counted in `dropped_frames`.
 
 ### Logging setup
 
@@ -178,7 +182,7 @@ Main thread          Processing thread       Read thread
 ─────────────────    ──────────────────      ────────────────
 User I/O             message_queue.get()     ser.read()
 test execution       COBS decode             buffer management
-menu loop            command dispatch        RTS flow control
+menu loop            command dispatch        bounded queue backpressure
                      calls message_handler   enqueues COBS frames
 ```
 
@@ -215,8 +219,8 @@ ID high   ID low | CMD(5b)  length    data…      XOR checksum
 | `ECHO_COMMAND` | 20 | TX/RX | Roundtrip echo |
 | `KEY_COMMAND` | 4 | RX | Keypad event |
 | `ANALOG_COMMAND` | 3 | RX | ADC reading |
-| `STATISTICS_STATUS_COMMAND` | 23 | TX/RX | Error/byte counters (22 items) |
-| `TASK_STATUS_COMMAND` | 24 | TX/RX | FreeRTOS task metrics (10 items) |
+| `STATISTICS_STATUS_COMMAND` | 23 | TX/RX | Error, byte, and diagnostic counters (23 items) |
+| `TASK_STATUS_COMMAND` | 24 | TX/RX | FreeRTOS task metrics (9 items) |
 
 Add new commands to the `SerialCommand` enum only; do not hard-code integer literals.
 
@@ -255,15 +259,16 @@ Additional fields (e.g. `baudrate`, `status_delta`, `results` list of individual
 
 ---
 
-## 8. Buffer and Flow Control
+## 8. Buffering and Backpressure
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `MAX_BUFFER_SIZE` | 1024 bytes | Hard limit; packets exceeding this are discarded |
-| `BUFFER_HIGH_WATER` | 768 bytes (75%) | `ser.rts = False` — device stops sending |
-| `BUFFER_LOW_WATER` | 256 bytes (25%) | `ser.rts = True` — device resumes sending |
+| `MAX_QUEUE_SIZE` | 10,000 frames | Bound on queued inbound messages; extra frames are dropped and counted |
 
-These constants are class attributes on `SerialInterface` and must not be duplicated in other modules. The RTS toggle is performed inside the read loop (`SerialInterface._read_loop`) after each chunk is appended to the inbound buffer, so flow control is purely a host-side reaction to buffer pressure.
+USB bulk transfers provide transport backpressure; the host never toggles RTS
+for queue pressure. DTR and RTS remain asserted for the USB session because
+firmware treats a line-state change as a new session. Queue saturation is
+accounted for by the host-side `dropped_frames` counter.
 
 ---
 
