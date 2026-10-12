@@ -26,6 +26,9 @@ import pytest
 
 import fault_frames as ff
 
+# Firmware framer capacity: the 26th non-delimiter byte triggers overflow.
+MAX_ENCODED_BUFFER_SIZE = 26
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -199,6 +202,10 @@ class TestPayloadOverflow:
     def test_decoded_size_at_least_4(self) -> None:
         decoded = _decode(ff.payload_overflow())
         assert len(decoded) >= 4
+
+    def test_encoded_size_trips_framer_overflow(self) -> None:
+        encoded = ff.payload_overflow()[:-1]
+        assert len(encoded) >= MAX_ENCODED_BUFFER_SIZE
 
 
 # ---------------------------------------------------------------------------

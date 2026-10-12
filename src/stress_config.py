@@ -228,7 +228,9 @@ def default_stress_config() -> StressConfig:
                 fault_frames=[_ff.payload_overflow()],
                 thresholds=ScenarioThresholds(
                     max_echo_drop_ratio=1.0,
-                    expected_counter_deltas={"buffer_overflow_error": 1},
+                    # len_field=21 encodes to 26 COBS bytes, which overflows the
+                    # firmware framer before the header is parsed.
+                    expected_counter_deltas={"receive_buffer_overflow_error": 1},
                 ),
                 tags=["ci", "fault_injection"],
             ),
@@ -254,10 +256,9 @@ def default_stress_config() -> StressConfig:
                 fault_frames=[_ff.double_overflow_empty()],
                 thresholds=ScenarioThresholds(
                     max_echo_drop_ratio=1.0,
-                    expected_counter_deltas={
-                        "receive_buffer_overflow_error": 2,
-                        "cobs_decode_error": 1,
-                    },
+                    # After the first overflow the framer discards until 0x00,
+                    # so no second overflow and no empty-frame decode.
+                    expected_counter_deltas={"receive_buffer_overflow_error": 1},
                 ),
                 tags=["ci", "fault_injection"],
             ),

@@ -155,12 +155,18 @@ class TestDefaultStressConfig:
         s = next(s for s in cfg.scenarios if s.name == "fi_empty_frame")
         assert s.thresholds.expected_counter_deltas == {"cobs_decode_error": 1}
 
+    def test_fi_payload_overflow_expected_counter(self) -> None:
+        cfg = default_stress_config()
+        s = next(s for s in cfg.scenarios if s.name == "fi_payload_overflow")
+        assert s.thresholds.expected_counter_deltas == {
+            "receive_buffer_overflow_error": 1,
+        }
+
     def test_fi_double_overflow_empty_expected_counters(self) -> None:
         cfg = default_stress_config()
         s = next(s for s in cfg.scenarios if s.name == "fi_double_overflow_empty")
         assert s.thresholds.expected_counter_deltas == {
-            "receive_buffer_overflow_error": 2,
-            "cobs_decode_error": 1,
+            "receive_buffer_overflow_error": 1,
         }
 
     # -- echo_burst --
