@@ -118,16 +118,9 @@ class SerialStatistics:
 class SerialInterface:
     """Interface to communicate with serial port."""
 
-    BUFFER_HIGH_WATER = 768  # 75% of max buffer size
-    BUFFER_LOW_WATER = 256  # 25% of max buffer size
-    MAX_BUFFER_SIZE = 1024
     # Upper bound on undelivered frames.  Keeps a stalled or dead consumer from
     # growing the queue without limit while the device floods the port.
     MAX_QUEUE_SIZE = 10000
-    # RTS watermarks, as a fraction of MAX_QUEUE_SIZE.  Hysteresis between the
-    # two keeps the line from flapping around a single threshold.
-    QUEUE_HIGH_WATER = int(MAX_QUEUE_SIZE * 0.75)
-    QUEUE_LOW_WATER = int(MAX_QUEUE_SIZE * 0.25)
     # Longest a shutdown will wait on a worker thread before giving up, so a
     # wedged read thread cannot hang a headless run forever.
     JOIN_TIMEOUT_S = 5.0
@@ -182,12 +175,15 @@ class SerialInterface:
                 bytesize=serial.EIGHTBITS,
                 stopbits=serial.STOPBITS_ONE,
                 xonxoff=False,
-                rtscts=True,  # Enable hardware flow control
+                rtscts=False,
             )
             self.ser.write_timeout = 0
             self.ser.reset_input_buffer()
             self.ser.reset_output_buffer()
-            self.ser.rts = True  # Initially allow sending
+            # Firmware requires both lines asserted; changing either ends the
+            # USB session.
+            self.ser.dtr = True
+            self.ser.rts = True
             logger.info("Serial port opened: %s", self.ser)
         except serial.SerialException:
             logger.exception("Error opening serial port.")
@@ -346,24 +342,6 @@ class SerialInterface:
             return False
         return calculate_checksum(decoded_data[:-1]) == decoded_data[-1:]
 
-    def _update_flow_control(self) -> None:
-        """
-        Assert or release RTS based on how far behind the consumer is.
-
-        Backpressure has to be measured on the queue of undelivered frames, not
-        on ``self.buffer``: that buffer only holds the frame currently being
-        assembled and is cleared at every delimiter, so for normal ~12-byte
-        frames it never approaches the watermark and RTS never engages. Queue
-        depth is what actually grows when the processing thread falls behind.
-        """
-        if not self.ser:
-            return
-        pending = self.message_queue.qsize()
-        if pending > self.QUEUE_HIGH_WATER:
-            self.ser.rts = False  # Stop sender
-        elif pending < self.QUEUE_LOW_WATER:
-            self.ser.rts = True  # Allow sender to send
-
     def _enqueue_message(self, frame: bytes) -> None:
         """Queue a complete frame, dropping it if the consumer is saturated."""
         try:
@@ -380,7 +358,6 @@ class SerialInterface:
     def _handle_received_data(self, data: bytes, max_message_size: int) -> None:
         """Handle received data and put complete messages in the queue."""
         self.statistics.record_received_bytes(len(data))
-        self._update_flow_control()
 
         for byte in data:
             if byte == 0:  # COBS packet delimiter

@@ -51,6 +51,7 @@ def test_open_success() -> None:
     assert ser_mock.write_timeout == 0
     ser_mock.reset_input_buffer.assert_called_once()
     ser_mock.reset_output_buffer.assert_called_once()
+    assert ser_mock.dtr is True
     assert ser_mock.rts is True
 
 
@@ -187,27 +188,11 @@ def test_process_complete_message_decode_error_logs(
     assert "Error processing message" in caplog.text
 
 
-def test_handle_received_data_queue_and_rts_toggle() -> None:
-    """Received data is framed into the queue and RTS tracks consumer lag."""
+def test_handle_received_data_queue() -> None:
+    """Received data is framed into the queue."""
     si = make_interface()
-    # Shrink watermarks so the test does not need thousands of frames.
-    si.QUEUE_HIGH_WATER = 2  # pyright: ignore[reportAttributeAccessIssue]
-    si.QUEUE_LOW_WATER = 1  # pyright: ignore[reportAttributeAccessIssue]
     ser_mock = Mock()
-    ser_mock.rts = True
     si.ser = ser_mock
-
-    # Backlog past the high watermark: tell the sender to stop.
-    for _ in range(3):
-        si.message_queue.put(b"backlog")
-    si._handle_received_data(b"", max_message_size=100)
-    assert ser_mock.rts is False
-
-    # Consumer catches up below the low watermark: allow sending again.
-    while not si.message_queue.empty():
-        si.message_queue.get_nowait()
-    si._handle_received_data(b"", max_message_size=100)
-    assert ser_mock.rts is True
 
     # A valid message (COBS encoded + delimiter) still lands in the queue.
     msg = cobs.encode(b"hi")
@@ -314,7 +299,9 @@ class TestOpenSerialParams:
         assert kwargs["bytesize"] == serial.EIGHTBITS
         assert kwargs["stopbits"] == serial.STOPBITS_ONE
         assert kwargs["xonxoff"] is False
-        assert kwargs["rtscts"] is True
+        assert kwargs["rtscts"] is False
+        assert ser_mock.dtr is True
+        assert ser_mock.rts is True
 
 
 class TestProcessMessages:
@@ -345,70 +332,21 @@ class TestProcessMessages:
         assert called["raw"] == raw
 
 
-class TestFlowControlBoundaries:
-    """RTS reacts to queue depth, at the exact watermark boundaries."""
+def test_queue_capacity_drops_frames_without_toggling_rts() -> None:
+    """A full bounded queue drops frames without changing RTS."""
+    si = make_interface()
+    ser_mock = Mock()
+    rts_sentinel = object()
+    ser_mock.rts = rts_sentinel
+    si.ser = ser_mock
 
-    @staticmethod
-    def _with_pending(pending: int, *, rts: bool) -> tuple[SerialInterface, Mock]:
-        si = make_interface()
-        ser_mock = Mock()
-        ser_mock.rts = rts
-        si.ser = ser_mock
-        for _ in range(pending):
-            si.message_queue.put(b"x")
-        return si, ser_mock
+    frame = cobs.encode(b"payload") + b"\x00"
+    for _ in range(si.MAX_QUEUE_SIZE + 1):
+        si._handle_received_data(frame, max_message_size=2048)
 
-    def test_queue_at_high_water_does_not_deassert_rts(self) -> None:
-        """Comparison is '>' so exactly at the watermark must not stop the sender."""
-        si, ser_mock = self._with_pending(SerialInterface.QUEUE_HIGH_WATER, rts=True)
-        si._handle_received_data(b"", max_message_size=2048)
-        assert ser_mock.rts is True
-
-    def test_queue_above_high_water_deasserts_rts(self) -> None:
-        """One frame past the watermark applies backpressure."""
-        si, ser_mock = self._with_pending(
-            SerialInterface.QUEUE_HIGH_WATER + 1, rts=True
-        )
-        si._handle_received_data(b"", max_message_size=2048)
-        assert ser_mock.rts is False
-
-    def test_queue_at_low_water_does_not_assert_rts(self) -> None:
-        """Comparison is '<' so exactly at the watermark must not release yet."""
-        si, ser_mock = self._with_pending(SerialInterface.QUEUE_LOW_WATER, rts=False)
-        si._handle_received_data(b"", max_message_size=2048)
-        assert ser_mock.rts is False
-
-    def test_queue_below_low_water_asserts_rts(self) -> None:
-        """Once the consumer catches up, the sender is released."""
-        si, ser_mock = self._with_pending(
-            SerialInterface.QUEUE_LOW_WATER - 1, rts=False
-        )
-        si._handle_received_data(b"", max_message_size=2048)
-        assert ser_mock.rts is True
-
-    def test_ordinary_frame_never_engages_flow_control(self) -> None:
-        """
-        The regression this fix targets.
-
-        Watermarks used to be compared against ``self.buffer``, the partial-frame
-        accumulator that is cleared at every delimiter. A normal ~12-byte frame
-        never came close to 768 bytes, so RTS effectively never engaged.
-        """
-        si = make_interface()
-        ser_mock = Mock()
-        ser_mock.rts = True
-        si.ser = ser_mock
-
-        frame = cobs.encode(b"\x00\x34\x02\x01\x02") + b"\x00"
-        for _ in range(50):
-            si._handle_received_data(frame, max_message_size=2048)
-
-        # 50 undelivered frames is well below the queue watermark: no backpressure.
-        assert ser_mock.rts is True
-        assert si.message_queue.qsize() == 50
-        # And the accumulator is empty between frames, which is why it was useless
-        # as a backpressure signal.
-        assert si.buffer == bytearray()
+    assert si.message_queue.qsize() == si.MAX_QUEUE_SIZE
+    assert si.statistics.snapshot()["dropped_frames"] == 1
+    assert ser_mock.rts is rts_sentinel
 
 
 class TestWriteEncoding:

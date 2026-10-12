@@ -69,6 +69,7 @@ STATISTICS_ITEMS = {
     19: "input_queue_init_error",
     20: "input_queue_full_error",
     21: "input_init_error",
+    22: "input_hysteresis_suppressed",
 }
 
 TASK_ITEMS = {
@@ -113,7 +114,7 @@ TASK_STACK_BYTES: dict[str, int] = {
     "idle_task": 0,  # idle task has no user-allocated stack
 }
 
-# Error status keys (excludes bytes_sent and bytes_received which are counters)
+# Error status keys, excluding byte counters and diagnostic counters
 STATUS_ERROR_KEYS: tuple[str, ...] = (
     "queue_send_error",
     "queue_receive_error",
@@ -161,6 +162,7 @@ STATISTICS_DISPLAY_NAMES: dict[str, str] = {
     "input_queue_init_error": "Input Queue Init Error",
     "input_queue_full_error": "Input Queue Full Error",
     "input_init_error": "Input Init Error",
+    "input_hysteresis_suppressed": "Input Hysteresis Suppressed",
 }
 
 # Display-friendly names for task items
@@ -203,7 +205,7 @@ class BaseTest:
             idx: {"absolute_time_us": 0, "percent_time": 0, "high_watermark": 0}
             for idx in TASK_ITEMS
         }
-        # The idle/system slot (index 9) reports min-ever-free-heap instead of
+        # The idle/system slot (index 8) reports min-ever-free-heap instead of
         # a stack watermark.  We track it in a dedicated field.
         self._min_free_heap_bytes: int = 0
         self._task_updated_at = dict.fromkeys(TASK_ITEMS, 0.0)

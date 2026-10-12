@@ -51,6 +51,7 @@ _STACK_PCT_MED_THRESHOLD = 50  # % used → yellow
 _ERROR_STAT_NAMES = frozenset(STATISTICS_DISPLAY_NAMES) - {
     "bytes_sent",
     "bytes_received",
+    "input_hysteresis_suppressed",
 }
 
 

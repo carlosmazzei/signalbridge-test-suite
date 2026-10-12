@@ -74,6 +74,11 @@ class TestBaseTestInit:
         assert set(base_test._statistics_values.keys()) == set(STATISTICS_ITEMS.keys())
         assert all(v == 0 for v in base_test._statistics_values.values())
 
+    def test_statistics_items_include_input_hysteresis_suppressed(self) -> None:
+        """The diagnostic hysteresis counter is the 23rd statistics item."""
+        assert len(STATISTICS_ITEMS) == 23
+        assert STATISTICS_ITEMS[22] == "input_hysteresis_suppressed"
+
     def test_statistics_updated_at_initialized_to_zero(
         self, base_test: BaseTest
     ) -> None:
