@@ -22,17 +22,21 @@ designed to exercise specific error counters in the firmware validation
 pipeline:
 
   Firmware validation pipeline order (stops at first failure):
-  1. COBS decode fails              → cobs_decode_error
-  2. decoded_size < 4               → msg_malformed_error
-  3. decoded_size ≠ len_field + 4   → msg_malformed_error
-  4. len_field > 20                 → buffer_overflow_error
-  5. rxID ≠ 0x01                    → unknown_cmd_error
-  6. XOR checksum mismatch          → checksum_error
-  7. receive buffer accumulates 26+ non-zero bytes without 0x00
+  1. receive buffer accumulates 26 non-zero bytes without 0x00
                                     → receive_buffer_overflow_error
+     (every following byte is discarded until the next 0x00; the
+     delimiter itself only re-arms the framer and counts nothing)
+  2. empty frame / COBS decode fails → cobs_decode_error
+  3. decoded_size < 4               → msg_malformed_error
+  4. decoded_size ≠ len_field + 4   → msg_malformed_error
+  5. len_field > 20                 → buffer_overflow_error
+     (not reachable from the wire: len_field > 20 implies ≥ 25 raw
+     bytes, i.e. ≥ 26 COBS bytes, which trips step 1 first)
+  6. rxID ≠ 0x01                    → unknown_cmd_error
+  7. XOR checksum mismatch          → checksum_error
 
 Key firmware constants (from the C implementation):
-  MAX_ENCODED_BUFFER_SIZE = 26  (overflow at index >= 25, i.e. 26th byte)
+  MAX_ENCODED_BUFFER_SIZE = 26  (overflow on the 26th non-delimiter byte)
   HEADER_SIZE = 3               (rxID_high, rxID_low|cmd, len_field)
   CHECKSUM_SIZE = 1
   MIN_DECODED_SIZE = 4          (HEADER_SIZE + CHECKSUM_SIZE)
@@ -124,7 +128,14 @@ def bad_checksum() -> bytes:
 
 
 def payload_overflow() -> bytes:
-    """Return a frame with len_field=21 — triggers buffer_overflow_error (len > 20)."""
+    """
+    Return a frame with len_field=21 — triggers receive_buffer_overflow_error.
+
+    The body (3-byte header + 21-byte payload + checksum) is 25 raw bytes,
+    which COBS encodes to 26 bytes.  The firmware framer overflows on the
+    26th byte, so the frame is dropped before the header is parsed and the
+    ``len_field > 20`` check (buffer_overflow_error) is never reached.
+    """
     header = bytes([0x00, 0x34, 21])  # len_field = 21 > MAX_PAYLOAD_LEN(20)
     payload = bytes(21)  # 21 zero bytes (content irrelevant)
     return _cobs_frame(header + payload)
@@ -146,13 +157,11 @@ def double_overflow_empty() -> bytes:
     """
     Return 52 non-zero bytes followed by 0x00.
 
-    Triggers:
-      receive_buffer_overflow_error += 2  (at byte 26 and byte 52)
-      cobs_decode_error             += 1  (0x00 arrives on empty buffer)
-
-    After the second overflow the buffer is empty.  The trailing 0x00
-    delimiter triggers a COBS decode attempt on that empty buffer, which
-    fails with cobs_decode_error.
+    Triggers receive_buffer_overflow_error += 1 at byte 26.  After the
+    overflow the framer discards every byte until the next 0x00, so byte 52
+    does not overflow again and the trailing delimiter only re-arms the
+    framer without a COBS decode attempt (cobs_decode_error is unchanged).
+    Verifies that the tail of an oversized frame is never re-framed.
     """
     return bytes([0x01] * 52) + b"\x00"
 
