@@ -206,6 +206,11 @@ same envelope, from `src/result_format.py`:
 | `latency_series` | `latency` and `baud_sweep` modes | List of per-iteration dicts: `test`, `waiting_time`, `samples`, `latency_avg`, `latency_min`, `latency_max`, `latency_p95`, `jitter`, `bitrate`, `dropped_messages`, `results` (raw latency samples), `outstanding_messages`, `outstanding_max`, `outstanding_final`, `status_before`/`status_after` (firmware counter snapshots), `status_delta` |
 | `stress_run` | `stress` mode | `run_id`, `port`, `baudrate`, `started_at`, `ended_at`, `overall_verdict` (`PASS`\|`FAIL`\|`WARN`), `scenarios`: list of `{name, run_id, started_at, ended_at, command_profile, messages_sent, messages_received, drop_ratio, latencies_ms, p50_ms, p95_ms, p99_ms, status_delta, task_snapshot, verdict, failure_reasons, tags}` |
 
+Each stress scenario's `task_snapshot` is keyed by task name and contains all
+10 task-status entries: application tasks at indices 0–7, `idle_task` at index
+8 (whose watermark field carries minimum free heap), and `watchdog_task` at
+index 9.
+
 File naming convention (`result_format.make_result_filename`):
 `YYYYMMDD-HHMMSS-<run_id>-<type>.json`, e.g.
 `20260705-190142-a1b2c3d4-stress.json`. `<type>` is `latency`, `baud_sweep`,
