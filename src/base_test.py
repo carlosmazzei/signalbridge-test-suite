@@ -82,6 +82,7 @@ TASK_ITEMS = {
     6: "keypad_task",
     7: "led_status_task",
     8: "idle_task",
+    9: "watchdog_task",
 }
 
 # Index of the idle/system slot whose third field carries heap info, not a
@@ -99,6 +100,7 @@ TASK_CORE_AFFINITY: dict[str, int] = {
     "adc_read_task": 1,
     "keypad_task": 1,
     "idle_task": -1,  # not pinned to a core
+    "watchdog_task": 0,
 }
 
 # Stack allocation in bytes for each task, matching include/app_config.h
@@ -112,6 +114,7 @@ TASK_STACK_BYTES: dict[str, int] = {
     "adc_read_task": 4096,
     "keypad_task": 5120,
     "idle_task": 0,  # idle task has no user-allocated stack
+    "watchdog_task": 2048,
 }
 
 # Error status keys, excluding byte counters and diagnostic counters
@@ -176,6 +179,7 @@ TASK_DISPLAY_NAMES: dict[str, str] = {
     "keypad_task": "Key + Encoder read",
     "idle_task": "Idle",
     "led_status_task": "LED status update",
+    "watchdog_task": "Watchdog supervisor",
 }
 
 logger = logging.getLogger(__name__)
