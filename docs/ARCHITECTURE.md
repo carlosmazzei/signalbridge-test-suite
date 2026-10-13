@@ -116,7 +116,7 @@ Every test mode that communicates with the device **must** extend `BaseTest` (`s
 | `handle_message(command, decoded_data)` | Dispatch on command ID: ECHO → latency, STATISTICS → `_statistics_values`, TASK_STATUS → `_task_values` |
 | `_calculate_test_results(...)` | Aggregate latency stats (avg/min/max/P95 via numpy) |
 | `_write_output_to_file(path, data)` | Serialize results list to JSON |
-| `_request_status_snapshot(timeout_s)` | Poll all 23 statistics + 9 task items; return `{statistics, tasks, received, complete}` |
+| `_request_status_snapshot(timeout_s)` | Poll all 23 statistics + 10 task items; return `{statistics, tasks, received, complete}` |
 | `_calculate_status_delta(before, after)` | Compute counter deltas between two snapshots |
 | `_get_user_input(prompt, default_value)` | Prompt with default, auto-cast to `type(default_value)`; `bool` defaults are parsed by word and an unconvertible entry falls back to the default |
 | `_status_lock` | `threading.Lock` — always acquire before reading/writing `_statistics_values` or `_task_values` |
@@ -220,7 +220,7 @@ ID high   ID low | CMD(5b)  length    data…      XOR checksum
 | `KEY_COMMAND` | 4 | RX | Keypad event |
 | `ANALOG_COMMAND` | 3 | RX | ADC reading |
 | `STATISTICS_STATUS_COMMAND` | 23 | TX/RX | Error, byte, and diagnostic counters (23 items) |
-| `TASK_STATUS_COMMAND` | 24 | TX/RX | FreeRTOS task metrics (9 items) |
+| `TASK_STATUS_COMMAND` | 24 | TX/RX | FreeRTOS task metrics (10 items) |
 
 Add new commands to the `SerialCommand` enum only; do not hard-code integer literals.
 

@@ -272,6 +272,20 @@ class TestHandleMessageTask:
         assert entry["percent_time"] == 50
         assert entry["high_watermark"] == 512
 
+    def test_watchdog_task_status_is_not_heap(self, base_test: BaseTest) -> None:
+        """Index 9 stores supervisor metrics without changing the heap value."""
+        idx = 9
+        data = self._make_task_data(idx, 2000, 25, 77)
+        base_test.handle_message(SerialCommand.TASK_STATUS_COMMAND.value, data)
+
+        assert TASK_ITEMS[idx] == "watchdog_task"
+        assert base_test._task_values[idx] == {
+            "absolute_time_us": 2000,
+            "percent_time": 25,
+            "high_watermark": 77,
+        }
+        assert base_test._min_free_heap_bytes == 0
+
     def test_task_status_updates_timestamp(self, base_test: BaseTest) -> None:
         """Task status message updates _task_updated_at."""
         idx = 1
