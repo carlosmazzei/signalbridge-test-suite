@@ -121,6 +121,17 @@ def test_load_and_process_data_invalid(visualize_results: VisualizeResults) -> N
         assert result is None
 
 
+@pytest.mark.parametrize("data", [None, {}, 42, "invalid"])
+def test_normalize_loaded_data_rejects_invalid_shape(
+    visualize_results: VisualizeResults, data: object
+) -> None:
+    """Unsupported JSON shapes raise the normalization error."""
+    with pytest.raises(
+        ValueError, match=r"^The JSON data should be a list of test series\.$"
+    ):
+        visualize_results._normalize_loaded_data(data)
+
+
 def test_visualize_stress_run(visualize_results: VisualizeResults) -> None:
     """Test that _visualize_stress_run parses stress data and calls matplotlib."""
     mock_data = {
