@@ -220,9 +220,9 @@ class VisualizeResults:
         if isinstance(data, list):
             return data
 
-        self._raise_invalid_data("The JSON data should be a list of test series.")
-        msg = "Unreachable"
-        raise AssertionError(msg)
+        return self._raise_invalid_data(
+            "The JSON data should be a list of test series."
+        )
 
     def _process_latency_series_data(
         self, data: list[dict[str, object]]
