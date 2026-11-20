@@ -56,7 +56,6 @@ class FeedbackConfig:
 
     enabled_stdout: bool
     jsonl_path: str
-    interval_ms: int
 
     @property
     def enabled(self) -> bool:
@@ -533,7 +532,6 @@ def main() -> int:
     feedback_cfg = FeedbackConfig(
         enabled_stdout=bool(args.feedback_stdout),
         jsonl_path=args.feedback_jsonl,
-        interval_ms=max(args.feedback_interval_ms, 0),
     )
     sink = EventSink(feedback_cfg)
     try:
