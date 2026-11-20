@@ -25,8 +25,6 @@ from typing import Any
 import fault_frames as _ff
 from const import TEST_RESULTS_FOLDER
 
-DEFAULT_CONFIG_FILENAME = "stress_config.json"
-
 
 @dataclass
 class ScenarioThresholds:
