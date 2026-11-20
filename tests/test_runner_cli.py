@@ -91,9 +91,7 @@ def test_extract_tester_counters_with_latency_fields() -> None:
 def test_event_sink_writes_jsonl(tmp_path: Path) -> None:
     """EventSink writes structured JSON lines to output file."""
     out = tmp_path / "events.jsonl"
-    sink = EventSink(
-        FeedbackConfig(enabled_stdout=False, jsonl_path=str(out), interval_ms=250)
-    )
+    sink = EventSink(FeedbackConfig(enabled_stdout=False, jsonl_path=str(out)))
     sink.emit("heartbeat", mode="latency", elapsed_s=1.2)
     sink.close()
     lines = out.read_text(encoding="utf-8").strip().splitlines()
@@ -105,9 +103,7 @@ def test_event_sink_writes_jsonl(tmp_path: Path) -> None:
 def test_forward_stress_progress_renames_inner_event_key(tmp_path: Path) -> None:
     """Inner 'event' key must not collide with EventSink.emit's 'event' arg."""
     out = tmp_path / "events.jsonl"
-    sink = EventSink(
-        FeedbackConfig(enabled_stdout=False, jsonl_path=str(out), interval_ms=250)
-    )
+    sink = EventSink(FeedbackConfig(enabled_stdout=False, jsonl_path=str(out)))
     _forward_stress_progress(
         "stress",
         sink,
