@@ -235,7 +235,7 @@ Polls and displays FreeRTOS statistics and task performance in Rich tables.
 
 **Statistics monitored** (23 counters, full list in `src/base_test.py::STATISTICS_ITEMS`): queue send/receive errors, CDC queue send error, display/LED output errors, watchdog error, malformed-message and COBS-decode errors, receive/buffer overflow errors, checksum error, unknown-command error, bytes sent/received, resource-allocation error, output controller/init/driver/param errors, input queue init/full and input init errors, and input hysteresis suppressed samples (diagnostic, not an error).
 
-**Tasks monitored:** `cdc_task`, `cdc_write_task`, `uart_event_task`, `led_status_task`, `decode_reception_task`, `process_outbound_task`, `adc_read_task`, `keypad_task` (includes rotary encoder), `idle_task` (system/heap info).
+**Tasks monitored:** `cdc_task`, `cdc_write_task`, `uart_event_task`, `led_status_task`, `decode_reception_task`, `process_outbound_task`, `adc_read_task`, `keypad_task` (includes rotary encoder), `idle_task` (system/heap info), `watchdog_task` (watchdog supervisor, index 9).
 
 ### 7. Visualize Test Results
 
