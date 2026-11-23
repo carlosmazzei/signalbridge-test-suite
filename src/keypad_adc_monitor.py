@@ -48,9 +48,8 @@ _ADC_MAX: int = 4095
 class KeypadAdcMonitor:
     """Monitor for keypad press/release events and ADC channel readings."""
 
-    def __init__(self, ser: SerialInterface) -> None:
+    def __init__(self, _ser: SerialInterface) -> None:
         """Initialise the monitor with a serial interface."""
-        self._ser = ser
         self._lock = threading.Lock()
         # channel -> deque of (value, timestamp)
         self._adc_history: dict[int, deque[tuple[int, float]]] = {}
