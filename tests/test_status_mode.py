@@ -254,6 +254,22 @@ def test_display_task_status_outputs_table(capsys: pytest.CaptureFixture[str]) -
     assert "Core 1 total time" in out
 
 
+def test_watchdog_task_displays_stack_percentage(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The watchdog task uses its stack watermark instead of the heap slot."""
+    sm = make_status_mode()
+    idx = _TASK_INDEX_BY_NAME["watchdog_task"]
+    sm.task_items[idx].high_watermark = 100
+
+    sm._display_task_status()
+    out = capsys.readouterr().out
+
+    assert "Watchdog supervisor" in out
+    assert "Stack %" in out
+    assert "80.5%" in out
+
+
 def test_handle_user_choice_dispatch() -> None:
     """Test handling user menu choices dispatches to correct methods."""
     sm = make_status_mode()
